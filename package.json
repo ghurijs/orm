@@ -1,0 +1,111 @@
+{
+  "name": "@ghuri/orm",
+  "version": "0.1.0-alpha.0",
+  "description": "Ghuri ORM: Django-style models, QuerySets and migrations on Drizzle (D1, Postgres, SQLite)",
+  "type": "module",
+  "license": "MIT",
+  "author": "Ghuri contributors",
+  "homepage": "https://github.com/ghurijs/orm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ghurijs/orm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ghurijs/orm/issues"
+  },
+  "keywords": [
+    "ghuri",
+    "django",
+    "cloudflare",
+    "workers",
+    "hono",
+    "drizzle",
+    "d1",
+    "r2",
+    "framework"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./migrations": {
+      "types": "./dist/migrations.d.ts",
+      "import": "./dist/migrations.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
+    },
+    "./pglite": {
+      "types": "./dist/pglite.d.ts",
+      "import": "./dist/pglite.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
+    "./commands": {
+      "types": "./dist/commands.d.ts",
+      "import": "./dist/commands.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src test",
+    "format": "biome format --write src test"
+  },
+  "peerDependencies": {
+    "@ghuri/core": "^0.1.0-alpha.0",
+    "drizzle-orm": "^0.45.0",
+    "hono": "^4.13.0",
+    "better-sqlite3": "^13.1.0",
+    "@electric-sql/pglite": "^0.5.16",
+    "postgres": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "tsup": "^8.5.1",
+    "vitest": "^5.1.0",
+    "@biomejs/biome": "^2.6.6",
+    "@types/node": "^24.0.0",
+    "@ghuri/core": "^0.1.0-alpha.0",
+    "drizzle-orm": "^0.45.0",
+    "hono": "^4.13.0",
+    "better-sqlite3": "^13.1.0",
+    "@electric-sql/pglite": "^0.5.16",
+    "postgres": "^4.1.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "miniflare": "^4.20260730.0",
+    "@cloudflare/workers-types": "^5.20261110.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    },
+    "@electric-sql/pglite": {
+      "optional": true
+    },
+    "postgres": {
+      "optional": true
+    }
+  }
+}
