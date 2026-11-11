@@ -7,5 +7,5 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'es2022',
-  external: [/^@ghuri\//, /^node:/, 'cloudflare:workers'],
+  external: [/^@ghuri\//, /^node:/, /^drizzle-orm/, 'cloudflare:workers', 'better-sqlite3', '@electric-sql/pglite', 'postgres', 'miniflare'],
 })
