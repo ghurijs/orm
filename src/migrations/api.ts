@@ -158,6 +158,7 @@ export async function makeMigrations(opts: MakeMigrationsOptions = {}): Promise<
   const conflicts = loader.detectConflicts()
   const conflictApps = Object.keys(conflicts).filter((a) => !labels.length || labels.includes(a))
   const generated: GeneratedMigration[] = []
+  const detectorWarnings: string[] = []
   const render = (m: Migration) => new MigrationWriter(m).asString()
 
   if (opts.merge) {
@@ -171,7 +172,8 @@ export async function makeMigrations(opts: MakeMigrationsOptions = {}): Promise<
       const m = new Migration({ dependencies: leaves.map((n) => [app, n] as const) })
       m.appLabel = app
       const num = String(nextNumber(loader, app)).padStart(4, '0')
-      const suffix = opts.name ?? `merge_${leaves.map((n) => n.split('_')[0]).join('_')}`
+      let suffix = opts.name ?? `merge_${leaves.join('_')}`
+      if (suffix.length > 52) suffix = `merge_${leaves.map((n) => n.split('_')[0]).join('_')}`
       m.name = `${num}_${suffix}`
       generated.push({ app, name: m.name, migration: m, source: render(m) })
     }
@@ -201,12 +203,16 @@ export async function makeMigrations(opts: MakeMigrationsOptions = {}): Promise<
       convertApps: labels,
       migrationName: opts.name,
     })
+    detectorWarnings.push(...detector.warnings)
     for (const [app, list] of [...changes].sort(([a], [b]) => a.localeCompare(b))) {
       for (const m of list) generated.push({ app, name: m.name, migration: m, source: render(m) })
     }
   }
 
-  const warnings = questioner instanceof NonInteractiveQuestioner ? questioner.warnings : []
+  const warnings = [
+    ...(questioner instanceof NonInteractiveQuestioner ? questioner.warnings : []),
+    ...detectorWarnings,
+  ]
   for (const w of warnings) io?.stderr(io.style.warning(w))
 
   if (!generated.length) {

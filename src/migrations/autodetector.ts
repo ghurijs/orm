@@ -155,6 +155,8 @@ function serializable(value: unknown): boolean {
 export class MigrationAutodetector {
   private working: ProjectState
   private ops: GenOp[] = []
+  /** Non-fatal problems found while detecting (shown by makemigrations). */
+  readonly warnings: string[] = []
 
   constructor(
     readonly fromState: ProjectState,
@@ -621,6 +623,10 @@ export class MigrationAutodetector {
               if (rApp !== app) {
                 const leaf = graph.leafNodes(rApp)[0]
                 if (leaf) opDeps.push([leaf[0], leaf[1]])
+                else if (this.fromState.realApps.has(rApp)) {
+                  const w = `${app} depends on app '${rApp}', which has no migrations: create its tables with \`migrate --run-syncdb\` or add migrations to it (makemigrations ${rApp}).`
+                  if (!this.warnings.includes(w)) this.warnings.push(w)
+                }
               }
               continue
             }

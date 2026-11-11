@@ -45,9 +45,44 @@ export function normalizeFieldSpec(spec: FieldSpec | FieldDeconstruction): Field
   return { type, options }
 }
 
-/** `{ type, options }` → `{ type, ...options }` (the form written to migration files). */
+/** Option order in migration files (others follow alphabetically). */
+const OPTION_ORDER = [
+  'to',
+  'onDelete',
+  'onDeleteValue',
+  'toField',
+  'through',
+  'throughFields',
+  'primaryKey',
+  'maxLength',
+  'maxDigits',
+  'decimalPlaces',
+  'null',
+  'blank',
+  'unique',
+  'default',
+  'dbDefault',
+  'autoNow',
+  'autoNowAdd',
+  'choices',
+  'dbColumn',
+  'dbTable',
+  'dbIndex',
+  'relatedName',
+  'relatedQueryName',
+]
+
+/** `{ type, options }` → `{ type, ...options }` (the form written to migration files, in a readable order). */
 export function flattenFieldSpec(spec: FieldDeconstruction): Record<string, unknown> {
-  return { type: spec.type, ...spec.options }
+  const keys = Object.keys(spec.options).sort((a, b) => {
+    const ia = OPTION_ORDER.indexOf(a)
+    const ib = OPTION_ORDER.indexOf(b)
+    if (ia >= 0 || ib >= 0) return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
+    return a.localeCompare(b)
+  })
+  const out: Record<string, unknown> = { type: spec.type }
+  for (const k of keys) out[k] = spec.options[k]
+  return out
 }
 
 /** Stable JSON used to compare specs (sorted keys; relation labels case-insensitive). */
