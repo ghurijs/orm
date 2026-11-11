@@ -196,7 +196,7 @@ export async function makeMigrations(opts: MakeMigrationsOptions = {}): Promise<
     }
   } else {
     const fromState = loader.projectState()
-    const toState = ProjectState.fromApps()
+    const toState = ProjectState.fromApps(apps.getAppConfigs().map((c) => c.appLabel))
     const detector = new MigrationAutodetector(fromState, toState, questioner, liveModelsMap())
     const changes = await detector.changes(loader.graph, {
       trimToApps: labels.length ? labels : undefined,

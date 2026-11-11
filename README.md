@@ -21,6 +21,8 @@ npm install -D better-sqlite3 @electric-sql/pglite miniflare   # local SQLite / 
 - [Saving, deleting, validation](#saving-deleting-validation)
 - [Transactions](#transactions)
 - [Databases and adapters](#databases-and-adapters)
+- [Migrations](#migrations)
+- [Data: dumpdata, loaddata, copydata, flush](#data-dumpdata-loaddata-copydata-flush)
 - [Switching D1 → PostgreSQL](#switching-d1--postgresql)
 - [Testing](#testing)
 - [Escape hatches](#escape-hatches)
@@ -305,14 +307,175 @@ export default defineSettings((env) => ({
 requests; per-request connections are closed when the request finishes) or for the process on Node/CLI.
 `Connection` exposes `execute(sql, params)`, `batch()`, `transaction()`, `drizzle`, `features`, `close()`.
 
+## Migrations
+
+Django-style, **dialect-neutral** migrations: the same files run on D1, SQLite and PostgreSQL, which is what
+makes moving between databases a settings change.
+
+### Workflow
+
+```bash
+ghuri makemigrations            # detect model changes → src/<app>/migrations/NNNN_name.ts
+ghuri migrate                   # apply them (default database)
+ghuri showmigrations            # [X] applied / [ ] pending, per app
+ghuri sqlmigrate blog 0002      # the SQL a migration runs (--dialect postgresql, --backwards)
+ghuri migrate blog 0001         # roll back to a migration ('zero' unapplies the whole app)
+```
+
+Apps opt in with a `migrations` package (created by `ghuri startapp`) and `path`, which tells the CLI where
+to write files:
+
+```ts
+// src/blog/app.ts
+import { AppConfig } from '@ghuri/core'
+import * as migrations from './migrations'
+import * as models from './models'
+
+export class BlogConfig extends AppConfig {
+  name = 'blog'
+  path = import.meta.dirname          // CLI only: where migrations/ lives
+  models = models
+  migrations = migrations             // the generated index: works on Workers (no file system)
+}
+```
+
+A generated migration:
+
+```ts
+// src/blog/migrations/0002_post_slug.ts
+import { Migration, operations as ops } from '@ghuri/orm/migrations'
+
+export default new Migration({
+  dependencies: [['blog', '0001_initial'], ['auth', '0001_initial']],
+  operations: [
+    ops.AddField({ modelName: 'Post', name: 'slug', field: { type: 'SlugField' }, oneOffDefault: 'post' }),
+    ops.AlterField({ modelName: 'Post', name: 'body', field: { type: 'TextField', blank: true } }),
+  ],
+})
+```
+
+`makemigrations` also rewrites `migrations/index.ts`, which exports every migration
+(`export { m0001_initial, … }` plus an ordered `migrations` map) so `import * as migrations from './migrations'`
+is all a Worker needs.
+
+**makemigrations** `[app...] [--name n] [--empty] [--dry-run] [--check] [--merge] [--no-input]`
+
+- Detects created / deleted / renamed models and fields, altered fields, M2M fields, `Meta.indexes`,
+  `Meta.constraints`, `uniqueTogether`, `dbTable` and other Meta options, with dependencies between apps
+  (`['auth', '0001_initial']`; FK cycles between apps are split into two migrations).
+- Interactive by default: asks whether a model / field was renamed, and for a one-off default when adding a
+  NOT NULL field without default (or making a field NOT NULL). With `--no-input` renames are treated as
+  remove + add and missing defaults are an error.
+- Callable defaults (`default: () => ({})`) are evaluated once to fill existing rows; `autoNow` /
+  `autoNowAdd` fields are filled with the current time.
+- Names follow Django: `0001_initial`, `0002_post_slug`, `0003_remove_post_body`, `auto_YYYYMMDD_HHMM`.
+  `--merge` creates a merge migration when two branches touched the same app.
+
+**migrate** `[app] [target] [--fake] [--fake-initial] [--plan] [--run-syncdb] [--database alias]`
+
+Each migration runs atomically together with its `ghuri_migrations` record: in a transaction on
+SQLite / PostgreSQL, as one `batch()` on D1. `preMigrate` / `postMigrate` signals (exported from `@ghuri/orm`,
+sender = the AppConfig, args `{ appConfig, using, plan }`) are sent for every installed app.
+
+### Operations
+
+`CreateModel`, `DeleteModel`, `RenameModel`, `AlterModelTable`, `AlterModelOptions`, `AddField`, `RemoveField`,
+`AlterField`, `RenameField`, `AddIndex`, `RemoveIndex`, `AddConstraint`, `RemoveConstraint`,
+`AlterUniqueTogether`, `RunSQL`, `RunCode`.
+
+```ts
+ops.RunSQL({
+  sqlite: "UPDATE blog_post SET slug = lower(title)",
+  postgresql: "UPDATE blog_post SET slug = lower(title)",   // a dialect without SQL is skipped
+  reverse: ops.RunSQL.noop,
+})
+
+// Data migration with historical models (the models as they were at this migration)
+ops.RunCode(
+  async (apps, conn, { using }) => {
+    const Post = apps.getModel('blog', 'Post')
+    for await (const p of Post.objects.using(using).filter({ slug: '' })) {
+      p.slug = slugify(p.title)
+      await p.save({ using })
+    }
+  },
+  ops.RunCode.noop,   // reverse
+)
+```
+
+### How changes are applied
+
+- **SQLite / D1**: `ALTER TABLE … ADD/DROP/RENAME COLUMN` where SQLite allows it; anything else (changing a
+  column, unique / NOT NULL / FK columns, check constraints) rebuilds the table like Django, in a D1-safe way
+  (`PRAGMA defer_foreign_keys = ON`, stash rows, drop, recreate, copy back, recreate indexes). Data is kept.
+- **PostgreSQL**: plain `ALTER TABLE … ALTER COLUMN TYPE / SET NOT NULL / SET DEFAULT`, named unique,
+  check and `DEFERRABLE INITIALLY DEFERRED` foreign key constraints.
+
+### D1: local, remote and `wrangler d1 migrations`
+
+```bash
+ghuri migrate                         # local D1 (wrangler's local state, via getPlatformProxy)
+ghuri migrate --remote                # the production D1 database
+ghuri sqlmigrate --all --out migrations-sql     # numbered .sql files for wrangler
+wrangler d1 migrations apply DB --remote        # (migrations_dir = "migrations-sql" in wrangler.jsonc)
+```
+
+`sqlmigrate --all` writes one file per migration (`0001_blog_0001_initial.sql`, …) in dependency order. Each
+file also inserts its `ghuri_migrations` row, so `ghuri showmigrations` agrees with wrangler. Re-running only
+adds files for new migrations (existing numbers never change). Pick one way to apply migrations per database.
+
+### Programmatic API
+
+```ts
+import { makeMigrations, migrate, showMigrations, sqlMigrate } from '@ghuri/orm/migrations'
+
+await migrate({ using: 'default' })                      // Workers-safe (no file system)
+await migrate({ appLabel: 'blog', target: 'zero' })
+const sql = await sqlMigrate('blog', '0002', { dialect: 'postgresql' })
+const status = await showMigrations()                    // [{ app, name, applied, dependencies }]
+await makeMigrations({ dryRun: true })                   // writing files needs @ghuri/orm/commands (Node)
+```
+
+`MigrationLoader`, `MigrationExecutor`, `MigrationRecorder`, `MigrationAutodetector`, `MigrationWriter`,
+`ProjectState` / `StateApps` and the schema editors are exported from `@ghuri/orm/migrations` too.
+`@ghuri/orm/commands` (Node only) exports the command classes (`MakemigrationsCommand`, `MigrateCommand`, …)
+and `registerOrmCommands()`, which adds them to core's `commandRegistry`.
+
+## Data: dumpdata, loaddata, copydata, flush
+
+```bash
+ghuri dumpdata blog.Post auth --indent 2 -o data.json   # Django-compatible JSON fixtures
+ghuri loaddata data.json                                # also: names in <app>/fixtures/, '-' for stdin
+ghuri flush --no-input                                  # delete every row (keeps the schema)
+ghuri copydata --from default --to pg                   # dump + load in-process between two aliases
+```
+
+Fixtures look like Django's: `[{ "model": "blog.post", "pk": 1, "fields": { "author": 3, "tags": [1, 2] } }]`
+(FKs as pks, M2M as pk lists, dates ISO strings, binary base64). `loaddata` upserts by pk in dependency order
+inside one transaction (one batch on D1), replaces M2M rows and resets PostgreSQL sequences. Every command
+takes `--database <alias>` (Django semantics). Programmatic: `dumpData`, `loadData`, `flushDatabase`,
+`copyData` from `@ghuri/orm/migrations`.
+
 ## Switching D1 → PostgreSQL
 
-1. Install `postgres` and set `DATABASES.default` to `postgres({ url })` (or `{ hyperdrive }` on Workers).
-2. `ghuri migrate` (migrations are dialect-neutral).
-3. `ghuri dumpdata > data.json` on D1, `ghuri loaddata data.json` on Postgres.
+Keep both databases configured while moving:
 
-No application code changes: values, lookups, case rules, NULL ordering (NULLs sort first ascending on every
-backend) and `onDelete` behave the same.
+```ts
+DATABASES: {
+  default: d1('DB'),
+  pg: postgres({ url: env.DATABASE_URL }),   // or { hyperdrive: 'HYPERDRIVE' } on Workers
+}
+```
+
+```bash
+ghuri migrate --database pg                      # same migration files, PostgreSQL DDL
+ghuri copydata --from default --to pg            # or: dumpdata --database default > data.json
+                                                 #     loaddata data.json --database pg
+ghuri migrate --remote && ghuri copydata --remote --from default --to pg   # from production D1
+```
+
+Then make `pg` the `default` alias. No application code changes: values, lookups, case rules, NULL ordering
+(NULLs sort first ascending on every backend) and `onDelete` behave the same.
 
 ## Testing
 
@@ -326,8 +489,10 @@ afterAll(() => db.teardown())
 ```
 
 `setupTestDatabase` creates a fresh in-memory database (D1 through Miniflare), installs a global context (or
-merges `DATABASES` into the current one), creates tables for all registered models (or `models: [...]`) and
-returns `{ connection, flush, teardown }`. `testBackends()` reads `GHURI_TEST_BACKENDS` for `describe.each`.
+merges `DATABASES` into the current one), runs the migrations of installed apps that have some (like Django's
+test runner; `postMigrate` is sent) and creates tables directly for every other model (all registered models,
+or `models: [...]`), and returns `{ connection, flush, teardown }`. `setTestSchemaCreator(fn)` replaces that
+step. `testBackends()` reads `GHURI_TEST_BACKENDS` for `describe.each`.
 `captureQueries(fn)` returns the SQL statements a block executed.
 
 ## Escape hatches
@@ -349,3 +514,6 @@ Post.objects.filter(...).toSQL()                     // { sql, params }
 - Filters on multi-valued relations use `EXISTS` (no duplicate rows, `distinct()` rarely needed).
 - `DecimalField` values are strings; SQLite stores them with NUMERIC affinity (≤ 15 significant digits).
 - `DurationField` is milliseconds (number).
+- Migrations: `RunCode` instead of `RunPython`; the one-off default is stored on the operation
+  (`oneOffDefault`) instead of `preserve_default=False`; index names are always explicit in migration files;
+  swappable models (`settings.AUTH_USER_MODEL` dependencies) are written as plain labels.

@@ -161,6 +161,9 @@ describe('makemigrations → files → migrate', () => {
     const res = await makeMigrations({ io: bufferIO(), check: true })
     expect(res.exitCode).toBe(0)
     expect(res.migrations).toEqual([])
+    const io = bufferIO()
+    expect(await callCommand('makemigrations', { check: true, noInput: true }, io)).toBe(0)
+    expect(io.out).toEqual(['No changes detected'])
   })
 
   it('writes the next migration for model changes', async () => {
