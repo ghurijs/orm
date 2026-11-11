@@ -117,19 +117,17 @@ async function createPostgresConnection(
     url = hd.connectionString
   }
   if (!url) throw new ImproperlyConfigured('postgres() needs `url` or `hyperdrive`.')
-  let postgresJs: any
-  try {
-    postgresJs = (await import('postgres')).default
-  } catch (err) {
-    throw new ImproperlyConfigured("postgres() requires the 'postgres' package (npm install postgres).", {
-      cause: err,
+  // `.catch()` keeps bundlers (wrangler/esbuild) from failing when `postgres` isn't installed (D1-only
+  // projects): the resolution error becomes a runtime error here instead of a build error.
+  const postgresJs: any = (
+    await import('postgres').catch((err) => {
+      throw new ImproperlyConfigured("postgres() requires the 'postgres' package (npm install postgres).", {
+        cause: err,
+      })
     })
-  }
-  let drizzleFactory: ((client: any) => any) | undefined
-  try {
-    const mod = await import('drizzle-orm/postgres-js')
-    drizzleFactory = (client: any) => mod.drizzle(client)
-  } catch {}
+  ).default
+  const drizzleMod = await import('drizzle-orm/postgres-js').catch(() => undefined)
+  const drizzleFactory = drizzleMod ? (client: any) => drizzleMod.drizzle(client) : undefined
   const sql = postgresJs(url, {
     max: opts.max ?? 5,
     fetch_types: false,

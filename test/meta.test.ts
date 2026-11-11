@@ -248,6 +248,26 @@ describe('Model._meta', () => {
     }
   })
 
+  it('postgres() adapter (no server available: lazy connect, wrapped errors)', async () => {
+    const { postgres, DatabaseError, d1 } = await import('../src/index')
+    const config = postgres({
+      url: 'postgres://user:pw@127.0.0.1:1/db',
+      max: 1,
+      driverOptions: { connect_timeout: 2 },
+    })
+    expect(config.vendor).toBe('postgresql')
+    expect(config.dialect).toBe('postgresql')
+    expect(JSON.stringify(config.options)).not.toContain('pw')
+    const conn = await config.connect({})
+    expect(conn.features.supportsTransactions).toBe(true)
+    await expect(conn.execute('SELECT 1')).rejects.toBeInstanceOf(DatabaseError)
+    await conn.close()
+    await expect(Promise.resolve(postgres({ hyperdrive: 'HD' }).connect({}))).rejects.toThrow(
+      /Hyperdrive binding 'HD'/,
+    )
+    expect(() => d1('DB').connect({})).toThrow(/D1 binding 'DB' not found/)
+  })
+
   it('main entry is Workers-safe (no Node-only static imports in its graph)', () => {
     const root = resolve(here, '../src')
     const seen = new Set<string>()
