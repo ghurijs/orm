@@ -1,12 +1,19 @@
 import type { Field } from '../../fields/base'
 import { ForeignKey } from '../../fields/related'
 import type { ConstraintSpec, ModelClass } from '../../models/types'
-import { BaseSchemaEditor } from './base'
+import {
+  type AlterFieldOptions,
+  type BackfillOption,
+  BaseSchemaEditor,
+  NO_DEFAULT,
+  type RemoveFieldOptions,
+  type UniqueSpec,
+} from './base'
 
 /**
  * PostgreSQL schema editor (also PGlite). Auto fields use identity columns; foreign keys are added as
  * deferred `ALTER TABLE … ADD CONSTRAINT … DEFERRABLE INITIALLY DEFERRED` statements once every table
- * exists.
+ * exists. Field changes use plain `ALTER TABLE … ALTER COLUMN` statements.
  */
 export class PostgresSchemaEditor extends BaseSchemaEditor {
   readonly dialect = 'postgresql' as const
@@ -19,10 +26,30 @@ export class PostgresSchemaEditor extends BaseSchemaEditor {
     return null
   }
 
+  /**
+   * Inside a migration transaction, ALTER TABLE fails with "pending trigger events" after rows were written
+   * (data migrations, backfills) because our foreign keys are DEFERRABLE INITIALLY DEFERRED. Check pending
+   * constraints right before each ALTER TABLE, then defer again.
+   */
+  override async execute(
+    sql: string,
+    params: unknown[] = [],
+    opts: { collect?: boolean } = {},
+  ): Promise<void> {
+    const wrap = this.options.atomic && !this.isCollectOnly && /^\s*ALTER\s+TABLE/i.test(sql)
+    if (wrap) await super.execute('SET CONSTRAINTS ALL IMMEDIATE', [], { collect: false })
+    await super.execute(sql, params, opts)
+    if (wrap) await super.execute('SET CONSTRAINTS ALL DEFERRED', [], { collect: false })
+  }
+
+  foreignKeyName(model: ModelClass, field: ForeignKey): string {
+    return this.createName(model._meta.dbTable, [field.column], '_fk')
+  }
+
   foreignKeySql(model: ModelClass, field: ForeignKey): string {
     const table = model._meta.dbTable
     const target = field.relatedModel
-    const name = this.createName(table, [field.column], '_fk')
+    const name = this.foreignKeyName(model, field)
     return (
       `ALTER TABLE ${this.quoteName(table)} ADD CONSTRAINT ${this.quoteName(name)} FOREIGN KEY (${this.quoteName(field.column)}) ` +
       `REFERENCES ${this.quoteName(target._meta.dbTable)} (${this.quoteName(field.targetField.column)}) DEFERRABLE INITIALLY DEFERRED`
@@ -35,12 +62,12 @@ export class PostgresSchemaEditor extends BaseSchemaEditor {
     }
   }
 
-  createUniqueSql(model: ModelClass, u: { fields: string[]; name: string; condition?: string }): string {
+  createUniqueSql(model: ModelClass, u: UniqueSpec, table = model._meta.dbTable): string {
     const cols = this.columnsFor(model, u.fields)
     if (u.condition) {
-      return `CREATE UNIQUE INDEX ${this.quoteName(u.name)} ON ${this.quoteName(model._meta.dbTable)} (${cols.join(', ')}) WHERE ${u.condition}`
+      return `CREATE UNIQUE INDEX ${this.quoteName(u.name)} ON ${this.quoteName(table)} (${cols.join(', ')}) WHERE ${u.condition}`
     }
-    return `ALTER TABLE ${this.quoteName(model._meta.dbTable)} ADD CONSTRAINT ${this.quoteName(u.name)} UNIQUE (${cols.join(', ')})`
+    return `ALTER TABLE ${this.quoteName(table)} ADD CONSTRAINT ${this.quoteName(u.name)} UNIQUE (${cols.join(', ')})`
   }
 
   deleteUniqueSql(model: ModelClass, name: string): string {
@@ -67,14 +94,215 @@ export class PostgresSchemaEditor extends BaseSchemaEditor {
     )
   }
 
+  // Deferred FK statements must follow renames / drops that happen before they're flushed.
+  override async alterDbTable(model: ModelClass, oldTable: string, newTable: string): Promise<void> {
+    await super.alterDbTable(model, oldTable, newTable)
+    if (oldTable === newTable) return
+    const from = this.quoteName(oldTable)
+    const to = this.quoteName(newTable)
+    this.deferredSql = this.deferredSql.map((s) => s.split(`${from} `).join(`${to} `))
+  }
+
+  override async renameColumn(table: string, oldColumn: string, newColumn: string): Promise<void> {
+    await super.renameColumn(table, oldColumn, newColumn)
+    const t = this.quoteName(table)
+    const o = `(${this.quoteName(oldColumn)})`
+    const n = `(${this.quoteName(newColumn)})`
+    this.deferredSql = this.deferredSql.map((s) => {
+      let out = s
+      if (out.startsWith(`ALTER TABLE ${t} `)) out = out.replace(`FOREIGN KEY ${o}`, `FOREIGN KEY ${n}`)
+      return out.replace(`REFERENCES ${t} ${o}`, `REFERENCES ${t} ${n}`)
+    })
+  }
+
+  override async deleteModel(model: ModelClass): Promise<void> {
+    await super.deleteModel(model)
+    const t = this.quoteName(model._meta.dbTable)
+    this.deferredSql = this.deferredSql.filter(
+      (s) => !s.startsWith(`ALTER TABLE ${t} `) && !s.includes(`REFERENCES ${t} `),
+    )
+  }
+
   protected override deleteTableSql(table: string): string {
     return `DROP TABLE ${this.quoteName(table)} CASCADE`
   }
 
-  async renameColumn(table: string, oldColumn: string, newColumn: string): Promise<void> {
-    await this.execute(
-      `ALTER TABLE ${this.quoteName(table)} RENAME COLUMN ${this.quoteName(oldColumn)} TO ${this.quoteName(newColumn)}`,
+  // ---- fields -------------------------------------------------------------------------------------
+
+  protected async addColumn(model: ModelClass, field: Field<any, any>, opts: BackfillOption): Promise<void> {
+    const table = this.quoteName(model._meta.dbTable)
+    const backfill = this.effectiveDefault(field, opts)
+    const temporaryDefault = backfill !== NO_DEFAULT && backfill !== null && field.dbDefault === undefined
+    const def = temporaryDefault ? `DEFAULT ${this.valueLiteral(field, backfill)}` : undefined
+    await this.execute(`ALTER TABLE ${table} ADD COLUMN ${this.columnSql(model, field, { default: def })}`)
+    if (temporaryDefault)
+      await this.execute(`ALTER TABLE ${table} ALTER COLUMN ${this.quoteName(field.column)} DROP DEFAULT`)
+    const idx = this.fieldIndex(field)
+    if (idx) await this.execute(this.createIndexSql(model, idx))
+    if (field instanceof ForeignKey && field.dbConstraint)
+      this.deferredSql.push(this.foreignKeySql(model, field))
+  }
+
+  protected async dropColumn(
+    model: ModelClass,
+    field: Field<any, any>,
+    _opts: RemoveFieldOptions,
+  ): Promise<void> {
+    const table = model._meta.dbTable
+    // Forget a deferred FK for this column that wasn't created yet.
+    this.deferredSql = this.deferredSql.filter(
+      (s) =>
+        !(
+          s.includes(`ALTER TABLE ${this.quoteName(table)} `) &&
+          s.includes(`(${this.quoteName(field.column)})`)
+        ),
     )
+    await this.execute(
+      `ALTER TABLE ${this.quoteName(table)} DROP COLUMN ${this.quoteName(field.column)} CASCADE`,
+    )
+  }
+
+  protected async alterColumn(
+    model: ModelClass,
+    oldField: Field<any, any>,
+    newField: Field<any, any>,
+    opts: AlterFieldOptions,
+  ): Promise<void> {
+    const oldModel = opts.oldModel ?? oldField.model ?? model
+    const tableName = model._meta.dbTable
+    const table = this.quoteName(tableName)
+    const oldTable = oldModel._meta.dbTable
+    const oldType = this.columnType(oldField)!
+    const newType = this.columnType(newField)!
+    const oldFk = oldField instanceof ForeignKey && oldField.dbConstraint ? oldField : null
+    const newFk = newField instanceof ForeignKey && newField.dbConstraint ? newField : null
+    const fkChanged =
+      !!oldFk &&
+      (!newFk ||
+        oldFk.relatedModel._meta.dbTable !== newFk.relatedModel._meta.dbTable ||
+        oldFk.targetField.column !== newFk.targetField.column ||
+        oldType !== newType)
+    // 1. drop what is going away / will be recreated
+    if (fkChanged) {
+      for (const name of await this.constraintNames(oldTable, [oldField.column], 'f', [
+        this.foreignKeyName(oldModel, oldFk),
+      ]))
+        await this.execute(`ALTER TABLE ${table} DROP CONSTRAINT ${this.quoteName(name)}`)
+    }
+    if (oldField.unique && !oldField.primaryKey && !newField.unique) {
+      for (const name of await this.constraintNames(oldTable, [oldField.column], 'u', [
+        `${oldTable}_${oldField.column}_key`,
+      ]))
+        await this.execute(`ALTER TABLE ${table} DROP CONSTRAINT ${this.quoteName(name)}`)
+    }
+    const oldIdx = this.fieldIndex(oldField)
+    const newIdx = this.fieldIndex(newField)
+    if (oldIdx && !newIdx)
+      await this.execute(`DROP INDEX IF EXISTS ${this.quoteName(this.indexName(oldModel, oldIdx))}`)
+    const oldCheck = oldField.dbCheck(this.dialect)
+    const newCheckSql = newField.dbCheck(this.dialect)
+    if (
+      oldCheck &&
+      oldCheck.split(oldField.column).join('?') !== newCheckSql?.split(newField.column).join('?')
+    ) {
+      for (const name of await this.constraintNames(oldTable, [oldField.column], 'c', [
+        `${oldTable}_${oldField.column}_check`,
+      ]))
+        await this.execute(`ALTER TABLE ${table} DROP CONSTRAINT ${this.quoteName(name)}`)
+    }
+    // 2. rename
+    const column = this.quoteName(newField.column)
+    if (oldField.column !== newField.column)
+      await this.renameColumn(tableName, oldField.column, newField.column)
+    // 3. type
+    if (oldType !== newType) {
+      await this.execute(
+        `ALTER TABLE ${table} ALTER COLUMN ${column} TYPE ${newType} USING ${column}::${newType}`,
+      )
+      if (newField.primaryKey) {
+        // Keep referencing foreign key columns in sync with the primary key type.
+        for (const rel of model._meta.allRelatedObjects) {
+          const f = rel.field
+          if (!(f instanceof ForeignKey) || f.targetField.name !== newField.name) continue
+          const relTable = this.quoteName(f.model._meta.dbTable)
+          await this.execute(
+            `ALTER TABLE ${relTable} ALTER COLUMN ${this.quoteName(f.column)} TYPE ${newType} USING ${this.quoteName(f.column)}::${newType}`,
+          )
+        }
+      }
+    }
+    // 4. db default
+    if (JSON.stringify(oldField.dbDefault) !== JSON.stringify(newField.dbDefault)) {
+      if (newField.dbDefault === undefined)
+        await this.execute(`ALTER TABLE ${table} ALTER COLUMN ${column} DROP DEFAULT`)
+      else await this.execute(`ALTER TABLE ${table} ALTER COLUMN ${column} SET ${this.defaultSql(newField)}`)
+    }
+    // 5. null
+    if (oldField.null !== newField.null && !newField.primaryKey) {
+      if (newField.null) await this.execute(`ALTER TABLE ${table} ALTER COLUMN ${column} DROP NOT NULL`)
+      else {
+        const backfill = this.effectiveDefault(newField, opts)
+        if (backfill !== NO_DEFAULT && backfill !== null)
+          await this.execute(
+            `UPDATE ${table} SET ${column} = ${this.valueLiteral(newField, backfill)} WHERE ${column} IS NULL`,
+          )
+        await this.execute(`ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL`)
+      }
+    }
+    // 6. add what is new
+    if (newField.unique && !newField.primaryKey && !oldField.unique) {
+      await this.execute(
+        `ALTER TABLE ${table} ADD CONSTRAINT ${this.quoteName(this.createName(tableName, [newField.column], '_uniq'))} UNIQUE (${column})`,
+      )
+    }
+    if (newIdx && (!oldIdx || oldField.column !== newField.column)) {
+      if (oldIdx)
+        await this.execute(`DROP INDEX IF EXISTS ${this.quoteName(this.indexName(oldModel, oldIdx))}`)
+      await this.execute(this.createIndexSql(model, newIdx))
+    }
+    if (
+      newCheckSql &&
+      oldCheck?.split(oldField.column).join('?') !== newCheckSql.split(newField.column).join('?')
+    ) {
+      await this.execute(
+        `ALTER TABLE ${table} ADD CONSTRAINT ${this.quoteName(this.createName(tableName, [newField.column], '_check'))} CHECK (${newCheckSql})`,
+      )
+    }
+    if (newFk && (fkChanged || !oldFk)) this.deferredSql.push(this.foreignKeySql(model, newFk))
+  }
+
+  /**
+   * Names of constraints of `type` ('f' foreign key, 'u' unique, 'c' check, 'p' primary key) on exactly
+   * `columns` of `table` (introspected); `fallback` when collecting SQL without a database.
+   */
+  async constraintNames(
+    table: string,
+    columns: string[],
+    type: string,
+    fallback: string[],
+  ): Promise<string[]> {
+    if (this.isCollectOnly) return fallback
+    const rows = await this.query(
+      `SELECT c.conname AS name, array_to_string(ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(n, i) JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.n ORDER BY k.i), ',') AS cols
+       FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace ns ON ns.oid = t.relnamespace
+       WHERE t.relname = $1 AND ns.nspname = current_schema() AND c.contype = $2`,
+      [table, type],
+    )
+    return rows.filter((r) => String(r.cols) === columns.join(',')).map((r) => String(r.name))
+  }
+
+  async findUniqueName(table: string, columns: string[]): Promise<string | null> {
+    if (this.isCollectOnly) return null
+    const names = await this.constraintNames(table, columns, 'u', [])
+    if (names.length) return names[0]
+    const rows = await this.query(
+      `SELECT i.relname AS name, array_to_string(ARRAY(SELECT a.attname FROM unnest(x.indkey::int2[]) WITH ORDINALITY k(n, o) JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = k.n ORDER BY k.o), ',') AS cols
+       FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_class t ON t.oid = x.indrelid JOIN pg_namespace ns ON ns.oid = t.relnamespace
+       WHERE t.relname = $1 AND ns.nspname = current_schema() AND x.indisunique AND NOT x.indisprimary`,
+      [table],
+    )
+    const hit = rows.find((r) => String(r.cols) === columns.join(','))
+    return hit ? String(hit.name) : null
   }
 
   async tableNames(): Promise<string[]> {

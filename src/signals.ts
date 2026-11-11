@@ -58,3 +58,25 @@ export const preDelete = signals.preDelete
 export const postDelete = signals.postDelete
 /** Sent by M2M related managers (`add/remove/clear/set`); sender is the through model. */
 export const m2mChanged = signals.m2mChanged
+
+/** Arguments of `preMigrate` / `postMigrate` (sender: the AppConfig). */
+export interface MigrateSignalArgs {
+  appConfig: import('@ghuri/core').AppConfig
+  /** Database alias. */
+  using: string
+  /** Plan that ran (or will run): `{ migration, backwards }` entries; empty for `flush`. */
+  plan: Array<{ migration: { appLabel: string; name: string }; backwards: boolean }>
+}
+
+const migrateSignals = globalSingleton('ghuri.orm.migrateSignals', () => ({
+  preMigrate: new Signal<MigrateSignalArgs>('preMigrate'),
+  postMigrate: new Signal<MigrateSignalArgs>('postMigrate'),
+}))
+
+/** Sent for every installed app before `migrate` runs its plan (Django's `pre_migrate`). */
+export const preMigrate: Signal<MigrateSignalArgs> = migrateSignals.preMigrate
+/**
+ * Sent for every installed app after `migrate` (and `flush`) finished (Django's `post_migrate`); `@ghuri/auth`
+ * creates default permissions here.
+ */
+export const postMigrate: Signal<MigrateSignalArgs> = migrateSignals.postMigrate

@@ -1,10 +1,28 @@
 import type { Dialect } from '../../query/sql'
-import { BaseSchemaEditor, type SchemaConnection, type SchemaEditorOptions } from './base'
+import {
+  type AlterFieldOptions,
+  type BackfillOption,
+  BaseSchemaEditor,
+  NO_DEFAULT,
+  type RemoveFieldOptions,
+  type SchemaConnection,
+  type SchemaEditorOptions,
+  type TableDefinition,
+  type UniqueSpec,
+} from './base'
 import { PostgresSchemaEditor } from './postgresql'
 import { SqliteSchemaEditor } from './sqlite'
 
-export type { SchemaConnection, SchemaEditorOptions }
-export { BaseSchemaEditor, PostgresSchemaEditor, SqliteSchemaEditor }
+export type {
+  AlterFieldOptions,
+  BackfillOption,
+  RemoveFieldOptions,
+  SchemaConnection,
+  SchemaEditorOptions,
+  TableDefinition,
+  UniqueSpec,
+}
+export { BaseSchemaEditor, NO_DEFAULT, PostgresSchemaEditor, SqliteSchemaEditor }
 
 /** The schema editor for a connection's (or a bare) dialect. */
 export function schemaEditorFor(

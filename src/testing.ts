@@ -43,12 +43,30 @@ export interface TestDatabase {
  */
 export type TestSchemaCreator = (connection: Connection, models: ModelClass[]) => Promise<void>
 
-const schemaCreator = globalSingleton<{ fn: TestSchemaCreator }>('ghuri.orm.testSchemaCreator', () => ({
-  fn: createTablesForModels,
-}))
+const schemaCreator = globalSingleton<{ fn?: TestSchemaCreator }>('ghuri.orm.testSchemaCreator', () => ({}))
 
-export function setTestSchemaCreator(fn: TestSchemaCreator): void {
+/** Replace how test databases get their schema (default: `migrateOrCreateTables`). */
+export function setTestSchemaCreator(fn: TestSchemaCreator | undefined): void {
   schemaCreator.fn = fn
+}
+
+/**
+ * Default test schema creator: runs the migrations of installed apps that have some (like Django's test
+ * runner) and creates tables directly from models for everything else.
+ */
+export async function migrateOrCreateTables(connection: Connection, models: ModelClass[]): Promise<void> {
+  const { MigrationLoader } = await import('./migrations/loader')
+  const loader = await MigrationLoader.load({ connection: null })
+  const withMigrations = new Set([...loader.migrations.values()].map((m) => m.appLabel))
+  if (!withMigrations.size) return createTablesForModels(connection, models)
+  const { migrate } = await import('./migrations/api')
+  const editor = schemaEditorFor(connection)
+  for (const m of models) {
+    if (!m._meta.managed || m._meta.autoCreated || withMigrations.has(m._meta.appLabel)) continue
+    await editor.createModel(m)
+  }
+  await migrate({ connection, using: connection.alias })
+  await editor.flushDeferred()
 }
 
 /** CREATE TABLE (+ indexes, M2M tables, foreign keys) for `models` on `connection`. */
@@ -165,7 +183,7 @@ export async function setupTestDatabase(opts: SetupTestDatabaseOptions = {}): Pr
   }
   connections.reset(alias)
 
-  if (opts.createTables !== false) await schemaCreator.fn(conn, models)
+  if (opts.createTables !== false) await (schemaCreator.fn ?? migrateOrCreateTables)(conn, models)
 
   const flush = async () => {
     const ordered = tablesInDeleteOrder(models).filter((m) => m._meta.managed)
