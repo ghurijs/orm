@@ -59,7 +59,9 @@ export async function createTablesForModels(connection: Connection, models: Mode
   })
 }
 
-async function openConnection(using: TestBackend): Promise<{ conn: Connection; dispose?: () => Promise<void> }> {
+async function openConnection(
+  using: TestBackend,
+): Promise<{ conn: Connection; dispose?: () => Promise<void> }> {
   if (using === 'sqlite') {
     const { openSqlite } = await import('./sqlite')
     return { conn: openSqlite({ filename: ':memory:' }) }
@@ -91,7 +93,8 @@ function collectModels(opts: SetupTestDatabaseOptions): ModelClass[] {
   }
   const all = new Set<ModelClass>()
   for (const m of apps.getModels()) if (isModelClass(m)) all.add(m)
-  for (const m of modelRegistry.all) if (m._meta.hasAppLabel && !m._meta.autoCreated && !m._meta.abstract) all.add(m)
+  for (const m of modelRegistry.all)
+    if (m._meta.hasAppLabel && !m._meta.autoCreated && !m._meta.abstract) all.add(m)
   return [...all]
 }
 
@@ -111,7 +114,8 @@ function tablesInDeleteOrder(models: ModelClass[]): ModelClass[] {
     // models referencing m must be emptied before m
     for (const other of set) {
       if (other === m) continue
-      if (other._meta.concreteFields.some((f) => f instanceof ForeignKey && f.relatedModel === m)) visit(other)
+      if (other._meta.concreteFields.some((f) => f instanceof ForeignKey && f.relatedModel === m))
+        visit(other)
     }
     visiting.delete(m)
     done.add(m)
@@ -133,7 +137,12 @@ export async function setupTestDatabase(opts: SetupTestDatabaseOptions = {}): Pr
   modelRegistry.resolvePending()
   const { conn, dispose } = await openConnection(using)
   conn.alias = alias
-  const config: DatabaseConfig = { vendor: conn.vendor, dialect: conn.dialect, connect: () => conn, options: { test: true } }
+  const config: DatabaseConfig = {
+    vendor: conn.vendor,
+    dialect: conn.dialect,
+    connect: () => conn,
+    options: { test: true },
+  }
 
   let ctx: GhuriContext | undefined = tryGetContext()
   let createdContext = false
@@ -143,7 +152,13 @@ export async function setupTestDatabase(opts: SetupTestDatabaseOptions = {}): Pr
   } else {
     ctx = createContext({
       env: {},
-      settings: { SECRET_KEY: 'test-secret-key', DEBUG: true, INSTALLED_APPS: [], ROOT_URLCONF: [], DATABASES: { [alias]: config } },
+      settings: {
+        SECRET_KEY: 'test-secret-key',
+        DEBUG: true,
+        INSTALLED_APPS: [],
+        ROOT_URLCONF: [],
+        DATABASES: { [alias]: config },
+      },
     })
     setGlobalContext(ctx)
     createdContext = true
@@ -156,7 +171,9 @@ export async function setupTestDatabase(opts: SetupTestDatabaseOptions = {}): Pr
     const ordered = tablesInDeleteOrder(models).filter((m) => m._meta.managed)
     if (conn.dialect === 'postgresql') {
       if (!ordered.length) return
-      await conn.execute(`TRUNCATE ${ordered.map((m) => `"${m._meta.dbTable}"`).join(', ')} RESTART IDENTITY CASCADE`)
+      await conn.execute(
+        `TRUNCATE ${ordered.map((m) => `"${m._meta.dbTable}"`).join(', ')} RESTART IDENTITY CASCADE`,
+      )
       return
     }
     for (const m of ordered) await conn.execute(`DELETE FROM "${m._meta.dbTable}"`)

@@ -22,11 +22,18 @@ function unique<T>(items: T[]): T[] {
 
 function dedupeObjects(objs: BaseModel[]): BaseModel[] {
   const seen = new Set<BaseModel>()
-  return objs.filter((o) => (seen.has(o) ? false : (seen.add(o), true)))
+  return objs.filter((o) => {
+    if (seen.has(o)) return false
+    seen.add(o)
+    return true
+  })
 }
 
 /** Prefetch `lookups` for already-fetched `instances` (Django's `prefetch_related_objects`). */
-export async function prefetchRelatedObjects(instances: BaseModel[], lookups: Array<string | Prefetch>): Promise<void> {
+export async function prefetchRelatedObjects(
+  instances: BaseModel[],
+  lookups: Array<string | Prefetch>,
+): Promise<void> {
   for (const l of lookups) {
     const pf = typeof l === 'string' ? new Prefetch(l) : l
     await prefetchOne(instances, pf)
@@ -64,15 +71,24 @@ async function prefetchOne(instances: BaseModel[], pf: Prefetch): Promise<void> 
   }
 }
 
-async function prefetchForward(objs: BaseModel[], f: ForeignKey, qs: QuerySet<any> | undefined, toAttr?: string): Promise<BaseModel[]> {
+async function prefetchForward(
+  objs: BaseModel[],
+  f: ForeignKey,
+  qs: QuerySet<any> | undefined,
+  toAttr?: string,
+): Promise<BaseModel[]> {
   if (!toAttr && objs.every((o) => o._state.fieldsCache.has(f.name))) {
-    return dedupeObjects(objs.map((o) => o._state.fieldsCache.get(f.name) as BaseModel | null).filter(Boolean) as BaseModel[])
+    return dedupeObjects(
+      objs.map((o) => o._state.fieldsCache.get(f.name) as BaseModel | null).filter(Boolean) as BaseModel[],
+    )
   }
   const ids = unique(objs.map((o) => (o as any)[f.attname]).filter((v) => v !== null && v !== undefined))
   const target = f.relatedModel
   const tf = f.targetField
   const related = ids.length
-    ? ((await (qs ?? target._baseManager.getQueryset()).filter({ [`${tf.name}__in`]: ids }).fetch()) as BaseModel[])
+    ? ((await (qs ?? target._baseManager.getQueryset())
+        .filter({ [`${tf.name}__in`]: ids })
+        .fetch()) as BaseModel[])
     : []
   const byKey = new Map(related.map((r) => [(r as any)[tf.attname], r]))
   for (const o of objs) {
@@ -83,12 +99,20 @@ async function prefetchForward(objs: BaseModel[], f: ForeignKey, qs: QuerySet<an
   return related
 }
 
-async function prefetchReverseOne(objs: BaseModel[], rel: RelatedObject, qs: QuerySet<any> | undefined): Promise<BaseModel[]> {
+async function prefetchReverseOne(
+  objs: BaseModel[],
+  rel: RelatedObject,
+  qs: QuerySet<any> | undefined,
+): Promise<BaseModel[]> {
   const fk = rel.field as ForeignKey
   const accessor = rel.getAccessorName()!
-  const vals = unique(objs.map((o) => (o as any)[fk.targetField.attname]).filter((v) => v !== null && v !== undefined))
+  const vals = unique(
+    objs.map((o) => (o as any)[fk.targetField.attname]).filter((v) => v !== null && v !== undefined),
+  )
   const related = vals.length
-    ? ((await (qs ?? rel.relatedModel._baseManager.getQueryset()).filter({ [`${fk.name}__in`]: vals }).fetch()) as BaseModel[])
+    ? ((await (qs ?? rel.relatedModel._baseManager.getQueryset())
+        .filter({ [`${fk.name}__in`]: vals })
+        .fetch()) as BaseModel[])
     : []
   const byKey = new Map(related.map((r) => [(r as any)[fk.attname], r]))
   for (const o of objs) {
@@ -110,9 +134,13 @@ async function prefetchReverseMany(
     return dedupeObjects(objs.flatMap((o) => o._state.prefetched.get(accessor) ?? []))
   }
   const fk = rel.field as ForeignKey
-  const vals = unique(objs.map((o) => (o as any)[fk.targetField.attname]).filter((v) => v !== null && v !== undefined))
+  const vals = unique(
+    objs.map((o) => (o as any)[fk.targetField.attname]).filter((v) => v !== null && v !== undefined),
+  )
   const related = vals.length
-    ? ((await (qs ?? rel.relatedModel._defaultManager.getQueryset()).filter({ [`${fk.name}__in`]: vals }).fetch()) as BaseModel[])
+    ? ((await (qs ?? rel.relatedModel._defaultManager.getQueryset())
+        .filter({ [`${fk.name}__in`]: vals })
+        .fetch()) as BaseModel[])
     : []
   const groups = new Map<unknown, BaseModel[]>()
   for (const r of related) {
@@ -146,15 +174,21 @@ async function prefetchM2M(
   const srcFk = through._meta.getForwardField(reverse ? b : a) as ForeignKey
   const tgtFk = through._meta.getForwardField(reverse ? a : b) as ForeignKey
   const targetModel = reverse ? field.model : field.relatedModel
-  const srcVals = unique(objs.map((o) => (o as any)[srcFk.targetField.attname]).filter((v) => v !== null && v !== undefined))
+  const srcVals = unique(
+    objs.map((o) => (o as any)[srcFk.targetField.attname]).filter((v) => v !== null && v !== undefined),
+  )
   const pairs = srcVals.length
-    ? ((await through._baseManager.getQueryset().filter({ [`${srcFk.attname}__in`]: srcVals }).valuesList(srcFk.attname, tgtFk.attname).fetch()) as Array<
-        [unknown, unknown]
-      >)
+    ? ((await through._baseManager
+        .getQueryset()
+        .filter({ [`${srcFk.attname}__in`]: srcVals })
+        .valuesList(srcFk.attname, tgtFk.attname)
+        .fetch()) as Array<[unknown, unknown]>)
     : []
   const tgtIds = unique(pairs.map((p) => p[1]))
   const targets = tgtIds.length
-    ? ((await (qs ?? targetModel._defaultManager.getQueryset()).filter({ [`${tgtFk.targetField.name}__in`]: tgtIds }).fetch()) as BaseModel[])
+    ? ((await (qs ?? targetModel._defaultManager.getQueryset())
+        .filter({ [`${tgtFk.targetField.name}__in`]: tgtIds })
+        .fetch()) as BaseModel[])
     : []
   const bySrc = new Map<unknown, Set<unknown>>()
   for (const [s, t] of pairs) {

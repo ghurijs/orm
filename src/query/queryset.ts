@@ -17,13 +17,15 @@ import {
   readValuesRow,
   Scope,
 } from './compiler'
-import { Aggregate, Expression, OrderBy, Q, QNode } from './expressions'
+import { Aggregate, Expression, type OrderBy, Q, type QNode } from './expressions'
 import { Prefetch, prefetchRelatedObjects } from './prefetch'
 import { ident, Sql } from './sql'
 
 /** Filter keyword object: direct field names autocomplete; any `__` lookup string is accepted. */
 export type FilterArg<T> = QNode | ({ [K in keyof T & string]?: unknown } & Record<string, unknown>)
-type CreateValue<V> = [Extract<V, PromiseLike<any>>] extends [never] ? V : Exclude<V, PromiseLike<any>> | BaseModel
+type CreateValue<V> = [Extract<V, PromiseLike<any>>] extends [never]
+  ? V
+  : Exclude<V, PromiseLike<any>> | BaseModel
 /** Data accepted by `create()` / constructors (field names, `${fk}Id`, related instances). */
 export type CreateData<T> = { [K in keyof T]?: CreateValue<T[K]> | null } & Record<string, unknown>
 export type AggregateSpec = Record<string, Aggregate | Expression>
@@ -39,8 +41,13 @@ export interface BulkCreateOptions {
 
 const MAX_GET_RESULTS = 21
 
-function isModelInstance(v: unknown): v is BaseModel {
-  return !!v && typeof v === 'object' && '_state' in (v as object) && typeof (v as any).constructor?._meta === 'object'
+function _isModelInstance(v: unknown): v is BaseModel {
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    '_state' in (v as object) &&
+    typeof (v as any).constructor?._meta === 'object'
+  )
 }
 
 /**
@@ -120,13 +127,15 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
   }
 
   distinct(...fields: string[]): QuerySet<T> {
-    if (fields.length) throw new FieldError('distinct(*fields) (DISTINCT ON) is not supported; use distinct().')
+    if (fields.length)
+      throw new FieldError('distinct(*fields) (DISTINCT ON) is not supported; use distinct().')
     return this.chain({ distinct: true })
   }
 
   /** Python-style slicing: `slice(0, 10)` → LIMIT 10, `slice(5)` → OFFSET 5. */
   slice(start: number, end?: number): QuerySet<T> {
-    if (start < 0 || (end !== undefined && end < 0)) throw new TypeError('Negative indexing is not supported.')
+    if (start < 0 || (end !== undefined && end < 0))
+      throw new TypeError('Negative indexing is not supported.')
     const { low, high } = this.state
     const newLow = low + start
     let newHigh = end === undefined ? high : low + end
@@ -177,11 +186,15 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     const annotations = [...this.state.annotations]
     let groupBy = this.state.groupBy
     for (const [name, expr] of Object.entries(spec)) {
-      if (!(expr instanceof Expression)) throw new TypeError(`annotate(): '${name}' must be an expression (F, Count, Value, …).`)
-      if (meta.getForwardField(name)) throw new FieldError(`The annotation '${name}' conflicts with a field on the model.`)
-      if (annotations.some(([n]) => n === name)) throw new FieldError(`The annotation '${name}' is already defined.`)
+      if (!(expr instanceof Expression))
+        throw new TypeError(`annotate(): '${name}' must be an expression (F, Count, Value, …).`)
+      if (meta.getForwardField(name))
+        throw new FieldError(`The annotation '${name}' conflicts with a field on the model.`)
+      if (annotations.some(([n]) => n === name))
+        throw new FieldError(`The annotation '${name}' is already defined.`)
       annotations.push([name, expr])
-      if (this.state.values && expr.containsAggregate && groupBy === null) groupBy = [...this.state.values.fields]
+      if (this.state.values && expr.containsAggregate && groupBy === null)
+        groupBy = [...this.state.values.fields]
     }
     return this.chain({ annotations, groupBy })
   }
@@ -196,10 +209,12 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
   /** Tuple rows: `valuesList('id', 'title')`, or flat values: `valuesList('id', { flat: true })`. */
   valuesList(...args: Array<string | ValuesListOptions>): QuerySet<any> {
     const last = args[args.length - 1]
-    const opts: ValuesListOptions = typeof last === 'object' && last !== null ? (args.pop() as ValuesListOptions) : {}
+    const opts: ValuesListOptions =
+      typeof last === 'object' && last !== null ? (args.pop() as ValuesListOptions) : {}
     const fields = args as string[]
     if (opts.flat && opts.named) throw new TypeError("'flat' and 'named' can't be used together.")
-    if (opts.flat && fields.length > 1) throw new TypeError("'flat' is not valid when valuesList is called with more than one field.")
+    if (opts.flat && fields.length > 1)
+      throw new TypeError("'flat' is not valid when valuesList is called with more than one field.")
     const kind = opts.flat ? 'flat' : opts.named ? 'named' : 'list'
     let names = fields
     if (kind === 'flat' && !names.length) names = [this.model._meta.pk.name]
@@ -228,7 +243,10 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     if (plan.kind === 'model') {
       results = rows.map((r) => readModelRow(plan, r, scope, this.state.using) as T)
       if (this.state.prefetch.length && results.length) {
-        await prefetchRelatedObjects(results as unknown as BaseModel[], this.state.prefetch as Array<string | Prefetch>)
+        await prefetchRelatedObjects(
+          results as unknown as BaseModel[],
+          this.state.prefetch as Array<string | Prefetch>,
+        )
       }
     } else {
       results = rows.map((r) => readValuesRow(plan, r) as T)
@@ -281,9 +299,12 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     const rows = await qs.fetch()
     const meta = this.model._meta
     if (rows.length === 1) return rows[0]
-    if (rows.length === 0) throw new this.model.DoesNotExist(`${meta.objectName} matching query does not exist.`)
+    if (rows.length === 0)
+      throw new this.model.DoesNotExist(`${meta.objectName} matching query does not exist.`)
     const n = rows.length >= MAX_GET_RESULTS ? `more than ${MAX_GET_RESULTS - 1}` : String(rows.length)
-    throw new this.model.MultipleObjectsReturned(`get() returned more than one ${meta.objectName} -- it returned ${n}!`)
+    throw new this.model.MultipleObjectsReturned(
+      `get() returned more than one ${meta.objectName} -- it returned ${n}!`,
+    )
   }
 
   private defaultOrdered(): QuerySet<T> {
@@ -304,17 +325,24 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
 
   private latestFields(fields: string[]): string[] {
     const f = fields.length ? fields : this.model._meta.getLatestBy
-    if (!f?.length) throw new TypeError("earliest() and latest() require either fields as positional arguments or 'getLatestBy' in the model's Meta.")
+    if (!f?.length)
+      throw new TypeError(
+        "earliest() and latest() require either fields as positional arguments or 'getLatestBy' in the model's Meta.",
+      )
     return f
   }
 
   async latest(...fields: string[]): Promise<T> {
     const order = this.latestFields(fields).map((f) => (f.startsWith('-') ? f.slice(1) : `-${f}`))
-    return this.orderBy(...order).slice(0, 1).get()
+    return this.orderBy(...order)
+      .slice(0, 1)
+      .get()
   }
 
   async earliest(...fields: string[]): Promise<T> {
-    return this.orderBy(...this.latestFields(fields)).slice(0, 1).get()
+    return this.orderBy(...this.latestFields(fields))
+      .slice(0, 1)
+      .get()
   }
 
   async count(): Promise<number> {
@@ -350,7 +378,8 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
   async aggregate<S extends AggregateSpec>(spec: S): Promise<{ [K in keyof S]: any }> {
     const entries = Object.entries(spec)
     for (const [name, e] of entries) {
-      if (!(e instanceof Expression) || !e.containsAggregate) throw new TypeError(`aggregate(): '${name}' is not an aggregate expression.`)
+      if (!(e instanceof Expression) || !e.containsAggregate)
+        throw new TypeError(`aggregate(): '${name}' is not an aggregate expression.`)
     }
     const out: Record<string, unknown> = {}
     if (this.state.isNone) {
@@ -367,7 +396,8 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
         typeof e.source === 'string' &&
         state.annotations.some(([n, a]) => n === e.source && a.containsAggregate),
     )
-    const wrap = state.distinct || isSliced(state) || grouping || refsAggregateAnnotation || state.values !== null
+    const wrap =
+      state.distinct || isSliced(state) || grouping || refsAggregateAnnotation || state.values !== null
     let query: Sql
     let scope: Scope
     if (!wrap) {
@@ -380,10 +410,19 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
         if (!s.isEmpty) where.push(s)
       }
       const cols = entries.map(([, e], i) => new Sql().append(e.compile(scope)).append(` AS "x${i}"`))
-      query = new Sql(['SELECT ']).append(Sql.join(cols)).append(' FROM ').append(ident(this.model._meta.dbTable))
+      query = new Sql(['SELECT '])
+        .append(Sql.join(cols))
+        .append(' FROM ')
+        .append(ident(this.model._meta.dbTable))
       query.append(' AS ').append(ident(scope.rootEntry.alias!))
       for (const j of scope.joins) query.append(' ').append(j)
-      if (where.length) query.append(' WHERE ').append(Sql.join(where.map((w) => w.wrap('(', ')')), ' AND '))
+      if (where.length)
+        query.append(' WHERE ').append(
+          Sql.join(
+            where.map((w) => w.wrap('(', ')')),
+            ' AND ',
+          ),
+        )
     } else {
       // Aggregate over a subquery of this queryset's rows.
       const innerState: QueryState = { ...state, values: null, prefetch: [], selectRelated: null }
@@ -392,20 +431,29 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
       scope = inner.scope
       const cols = entries.map(([, e], i) => {
         if (!(e instanceof Aggregate) || typeof e.source !== 'string') {
-          throw new FieldError('Only simple aggregates (Count/Sum/Avg/Min/Max of a field or annotation) are supported here.')
+          throw new FieldError(
+            'Only simple aggregates (Count/Sum/Avg/Min/Max of a field or annotation) are supported here.',
+          )
         }
         let ref = '*'
         if (e.source !== '*') {
           const src = e.source as string
           const ann = plan.annotations.find((a) => a.name === src)
-          const fld = plan.fields.find((f) => f.field.name === src || f.field.attname === src || (src === 'pk' && f.field.primaryKey))
+          const fld = plan.fields.find(
+            (f) => f.field.name === src || f.field.attname === src || (src === 'pk' && f.field.primaryKey),
+          )
           const alias = ann?.alias ?? fld?.alias
-          if (!alias) throw new FieldError(`Cannot aggregate over '${src}' on a sliced/distinct/grouped queryset.`)
+          if (!alias)
+            throw new FieldError(`Cannot aggregate over '${src}' on a sliced/distinct/grouped queryset.`)
           ref = `"agg_sub"."${alias}"`
         }
         return Sql.raw(`${e.fn}(${e.distinct ? 'DISTINCT ' : ''}${ref}) AS "x${i}"`)
       })
-      query = new Sql(['SELECT ']).append(Sql.join(cols)).append(' FROM (').append(inner.sql).append(') AS "agg_sub"')
+      query = new Sql(['SELECT '])
+        .append(Sql.join(cols))
+        .append(' FROM (')
+        .append(inner.sql)
+        .append(') AS "agg_sub"')
     }
     const { sql, params } = query.render(conn.dialect)
     const { rows } = await conn.execute(sql, params)
@@ -433,7 +481,8 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
 
   private static resolveDefaults(d: Record<string, unknown> | undefined): Record<string, unknown> {
     const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(d ?? {})) out[k] = typeof v === 'function' && !(v as any)._meta ? (v as () => unknown)() : v
+    for (const [k, v] of Object.entries(d ?? {}))
+      out[k] = typeof v === 'function' && !(v as any)._meta ? (v as () => unknown)() : v
     return out
   }
 
@@ -490,8 +539,11 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
           if (f?.concrete) updateFields.push(f.name)
         }
         // autoNow fields must be saved too
-        for (const f of meta.concreteFields) if ((f as any).autoNow && !updateFields.includes(f.name)) updateFields.push(f.name)
-        await (obj as unknown as BaseModel).save(updateFields.length ? { updateFields, using: this.db } : { using: this.db })
+        for (const f of meta.concreteFields)
+          if ((f as any).autoNow && !updateFields.includes(f.name)) updateFields.push(f.name)
+        await (obj as unknown as BaseModel).save(
+          updateFields.length ? { updateFields, using: this.db } : { using: this.db },
+        )
         return [obj, false] as [T, boolean]
       },
       { using: this.db },
@@ -503,7 +555,8 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     if (!objs.length) return objs
     const meta = this.model._meta
     for (const o of objs) {
-      if (!(o instanceof (this.model as any))) throw new TypeError(`bulkCreate() expects ${meta.objectName} instances.`)
+      if (!(o instanceof (this.model as any)))
+        throw new TypeError(`bulkCreate() expects ${meta.objectName} instances.`)
     }
     const conn = await this.connection()
     const d = conn.dialect
@@ -512,7 +565,9 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     await atomic(
       async () => {
         const tx = await connections.get(using)
-        const withPk = objs.filter((o) => (o as any)[pk.attname] !== null && (o as any)[pk.attname] !== undefined)
+        const withPk = objs.filter(
+          (o) => (o as any)[pk.attname] !== null && (o as any)[pk.attname] !== undefined,
+        )
         const withoutPk = objs.filter((o) => !withPk.includes(o))
         for (const [group, includePk] of [
           [withPk, true],
@@ -520,7 +575,10 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
         ] as Array<[T[], boolean]>) {
           if (!group.length) continue
           const fields = meta.concreteFields.filter((f) => includePk || !f.isAutoField)
-          const perStatement = Math.max(1, Math.floor(tx.features.maxQueryParams / Math.max(1, fields.length)))
+          const perStatement = Math.max(
+            1,
+            Math.floor(tx.features.maxQueryParams / Math.max(1, fields.length)),
+          )
           const size = Math.min(perStatement, opts.batchSize ?? perStatement)
           for (const batch of chunk(group, size)) {
             const rows = batch.map((o) => {
@@ -532,7 +590,10 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
             })
             const q = new Sql(['INSERT INTO ']).append(ident(meta.dbTable))
             if (fields.length) {
-              q.append(' (').append(Sql.join(fields.map((f) => ident(f.column)))).append(') VALUES ').append(Sql.join(rows))
+              q.append(' (')
+                .append(Sql.join(fields.map((f) => ident(f.column))))
+                .append(') VALUES ')
+                .append(Sql.join(rows))
             } else q.append(' DEFAULT VALUES')
             if (opts.ignoreConflicts) q.append(' ON CONFLICT DO NOTHING')
             q.append(' RETURNING ').append(ident(pk.column))
@@ -564,7 +625,7 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     const meta = this.model._meta
     const flds = fields.map((n) => {
       const f = meta.getForwardField(n)
-      if (!f || !f.concrete) throw new FieldError(`bulkUpdate() can only be used with concrete fields ('${n}').`)
+      if (!f?.concrete) throw new FieldError(`bulkUpdate() can only be used with concrete fields ('${n}').`)
       if (f.primaryKey) throw new FieldError('bulkUpdate() cannot be used with primary key fields.')
       return f
     })
@@ -572,7 +633,10 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     const d = conn.dialect
     const pk = meta.pk
     const perObj = flds.length * 2 + 1
-    const size = Math.min(Math.max(1, Math.floor(conn.features.maxQueryParams / perObj)), opts.batchSize ?? Number.POSITIVE_INFINITY)
+    const size = Math.min(
+      Math.max(1, Math.floor(conn.features.maxQueryParams / perObj)),
+      opts.batchSize ?? Number.POSITIVE_INFINITY,
+    )
     let total = 0
     await atomic(
       async () => {
@@ -584,8 +648,13 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
               const v = (o as any)[f.attname]
               let param = v === null || v === undefined ? Sql.raw('NULL') : f.dbParam(v, d)
               const t = f.dbType(d)
-              if (d === 'postgresql' && t && f.internalType !== 'JSONField') param = param.wrap('CAST(', ` AS ${t})`)
-              cases.append(' WHEN ').append(pk.dbParam((o as any)[pk.attname], d)).append(' THEN ').append(param)
+              if (d === 'postgresql' && t && f.internalType !== 'JSONField')
+                param = param.wrap('CAST(', ` AS ${t})`)
+              cases
+                .append(' WHEN ')
+                .append(pk.dbParam((o as any)[pk.attname], d))
+                .append(' THEN ')
+                .append(param)
             }
             cases.append(' END')
             return new Sql().append(ident(f.column)).append(' = ').append(cases)
@@ -613,7 +682,8 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     const meta = this.model._meta
     const fieldName = opts.fieldName ?? 'pk'
     const field = fieldName === 'pk' ? meta.pk : meta.getForwardField(fieldName)
-    if (!field || !(field.unique || field.primaryKey)) throw new FieldError(`inBulk()'s fieldName must be a unique field but '${fieldName}' isn't.`)
+    if (!field || !(field.unique || field.primaryKey))
+      throw new FieldError(`inBulk()'s fieldName must be a unique field but '${fieldName}' isn't.`)
     const out = new Map<unknown, T>()
     if (ids && !ids.length) return out
     const qs = ids ? this.filter({ [`${field.name}__in`]: ids } as FilterArg<T>) : this.all()
@@ -627,7 +697,9 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
     if (this.state.isNone || !Object.keys(values).length) return 0
     const conn = await this.connection()
     const compiler = new Compiler(conn.dialect, conn.features)
-    const { sql, params } = compileUpdate({ ...this.state, ordering: [] }, compiler, values).render(conn.dialect)
+    const { sql, params } = compileUpdate({ ...this.state, ordering: [] }, compiler, values).render(
+      conn.dialect,
+    )
     const res = await conn.execute(sql, params)
     this._resultCache = null
     return res.rowsAffected ?? 0

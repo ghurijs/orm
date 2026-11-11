@@ -211,8 +211,8 @@ export class ConcatExpression extends Expression {
     const pieces = this.parts.map((p) => {
       const inner = p.compile(scope)
       return scope.dialect === 'postgresql'
-        ? inner.wrap("COALESCE(CAST(", " AS text), '')")
-        : inner.wrap("COALESCE(", ", '')")
+        ? inner.wrap('COALESCE(CAST(', " AS text), '')")
+        : inner.wrap('COALESCE(', ", '')")
     })
     return Sql.join(pieces, ' || ').wrap('(', ')')
   }
@@ -228,7 +228,11 @@ export class NowExpression extends Expression {
       : Sql.raw("strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
   }
   override convertValue(value: unknown): unknown {
-    return value === null || value === undefined ? null : value instanceof Date ? value : new Date(String(value))
+    return value === null || value === undefined
+      ? null
+      : value instanceof Date
+        ? value
+        : new Date(String(value))
   }
 }
 export const Now = (): NowExpression => new NowExpression()
@@ -290,11 +294,16 @@ export class Aggregate extends Expression {
   }
 }
 
-export const Count = (source: string | Expression = '*', opts?: AggregateOptions): Aggregate => new Aggregate('COUNT', source, opts)
-export const Sum = (source: string | Expression, opts?: AggregateOptions): Aggregate => new Aggregate('SUM', source, opts)
-export const Avg = (source: string | Expression, opts?: AggregateOptions): Aggregate => new Aggregate('AVG', source, opts)
-export const Min = (source: string | Expression, opts?: AggregateOptions): Aggregate => new Aggregate('MIN', source, opts)
-export const Max = (source: string | Expression, opts?: AggregateOptions): Aggregate => new Aggregate('MAX', source, opts)
+export const Count = (source: string | Expression = '*', opts?: AggregateOptions): Aggregate =>
+  new Aggregate('COUNT', source, opts)
+export const Sum = (source: string | Expression, opts?: AggregateOptions): Aggregate =>
+  new Aggregate('SUM', source, opts)
+export const Avg = (source: string | Expression, opts?: AggregateOptions): Aggregate =>
+  new Aggregate('AVG', source, opts)
+export const Min = (source: string | Expression, opts?: AggregateOptions): Aggregate =>
+  new Aggregate('MIN', source, opts)
+export const Max = (source: string | Expression, opts?: AggregateOptions): Aggregate =>
+  new Aggregate('MAX', source, opts)
 
 // ---- ordering -----------------------------------------------------------------------------------
 
@@ -369,9 +378,16 @@ export function Q(...filters: Array<Record<string, unknown> | QNode>): QNode {
   return new QNode(filters.map((f) => QNode.from(f)))
 }
 Q.not = (...filters: Array<Record<string, unknown> | QNode>): QNode => Q(...filters).not()
-Q.and = (...filters: Array<Record<string, unknown> | QNode>): QNode => new QNode(filters.map((f) => QNode.from(f)), 'AND')
-Q.or = (...filters: Array<Record<string, unknown> | QNode>): QNode => new QNode(filters.map((f) => QNode.from(f)), 'OR')
+Q.and = (...filters: Array<Record<string, unknown> | QNode>): QNode =>
+  new QNode(
+    filters.map((f) => QNode.from(f)),
+    'AND',
+  )
+Q.or = (...filters: Array<Record<string, unknown> | QNode>): QNode =>
+  new QNode(
+    filters.map((f) => QNode.from(f)),
+    'OR',
+  )
 
 /** Type of `Q(...)` results. */
 export type Q = QNode
-

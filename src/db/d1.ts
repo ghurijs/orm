@@ -1,6 +1,6 @@
 import { ImproperlyConfigured } from '@ghuri/core'
-import { wrapDatabaseError } from '../errors'
 import { drizzle } from 'drizzle-orm/d1'
+import { wrapDatabaseError } from '../errors'
 import { BaseConnection } from './base'
 import type { Connection, DatabaseConfig, DatabaseFeatures, ExecuteResult } from './types'
 

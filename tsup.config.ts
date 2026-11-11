@@ -7,5 +7,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'es2022',
+  // keep `node:async_hooks` (Workers nodejs_compat needs the prefix)
+  removeNodeProtocol: false,
   external: [/^@ghuri\//, /^node:/, /^drizzle-orm/, 'cloudflare:workers', 'better-sqlite3', '@electric-sql/pglite', 'postgres', 'miniflare'],
 })

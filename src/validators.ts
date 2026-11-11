@@ -97,7 +97,10 @@ export class RegexValidator {
   deconstruct(): { type: string; args: unknown[] } {
     return {
       type: 'RegexValidator',
-      args: [this.regex.source, { message: this.message, code: this.code, inverseMatch: this.inverseMatch, flags: this.regex.flags }],
+      args: [
+        this.regex.source,
+        { message: this.message, code: this.code, inverseMatch: this.inverseMatch, flags: this.regex.flags },
+      ],
     }
   }
 }
@@ -143,7 +146,8 @@ export class URLValidator {
       throw new ValidationError(this.message, { code: this.code })
     }
     const scheme = url.protocol.replace(/:$/, '').toLowerCase()
-    if (!this.schemes.includes(scheme) || !url.hostname) throw new ValidationError(this.message, { code: this.code })
+    if (!this.schemes.includes(scheme) || !url.hostname)
+      throw new ValidationError(this.message, { code: this.code })
     const host = url.hostname
     const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[')
     if (!isIp && host !== 'localhost' && !/^([a-z0-9¡-￿-]+\.)+[a-z¡-￿-]{2,63}\.?$/i.test(host)) {
@@ -195,14 +199,17 @@ export function isIPv6(s: string): boolean {
 }
 
 export const validateIPv4Address: ValidatorFn = (value) => {
-  if (!isIPv4(String(value ?? ''))) throw new ValidationError('Enter a valid IPv4 address.', { code: 'invalid' })
+  if (!isIPv4(String(value ?? '')))
+    throw new ValidationError('Enter a valid IPv4 address.', { code: 'invalid' })
 }
 export const validateIPv6Address: ValidatorFn = (value) => {
-  if (!isIPv6(String(value ?? ''))) throw new ValidationError('Enter a valid IPv6 address.', { code: 'invalid' })
+  if (!isIPv6(String(value ?? '')))
+    throw new ValidationError('Enter a valid IPv6 address.', { code: 'invalid' })
 }
 export const validateIPv46Address: ValidatorFn = (value) => {
   const s = String(value ?? '')
-  if (!isIPv4(s) && !isIPv6(s)) throw new ValidationError('Enter a valid IPv4 or IPv6 address.', { code: 'invalid' })
+  if (!isIPv4(s) && !isIPv6(s))
+    throw new ValidationError('Enter a valid IPv4 or IPv6 address.', { code: 'invalid' })
 }
 
 export class DecimalValidator {

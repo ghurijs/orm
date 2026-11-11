@@ -63,7 +63,8 @@ export const EMPTY_VALUES: readonly unknown[] = [null, undefined, '']
 export function isEmptyValue(v: unknown): boolean {
   if (v === null || v === undefined || v === '') return true
   if (Array.isArray(v)) return v.length === 0
-  if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) return Object.keys(v).length === 0
+  if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype)
+    return Object.keys(v).length === 0
   return false
 }
 
@@ -334,7 +335,8 @@ export abstract class Field<T = unknown, O extends FieldOptions = FieldOptions> 
     ]
     for (const k of keys) if (o[k] !== undefined) options[k] = o[k]
     if (o.default !== undefined) {
-      if (typeof o.default === 'function') options.default = { callable: (o.default as Function).name || 'anonymous' }
+      if (typeof o.default === 'function')
+        options.default = { callable: (o.default as Function).name || 'anonymous' }
       else options.default = o.default instanceof Date ? o.default.toISOString() : o.default
     }
     if (this.choices) options.choices = this.choices.map(([v, l]) => [v, l])
@@ -369,7 +371,9 @@ export abstract class Field<T = unknown, O extends FieldOptions = FieldOptions> 
       required: !this.blank,
       helpText: this.helpText,
       disabled: !this.editable,
-      ...(this.choices && hint.widget !== 'select-multiple' ? { widget: 'select', choices: this.getChoices() } : {}),
+      ...(this.choices && hint.widget !== 'select-multiple'
+        ? { widget: 'select', choices: this.getChoices() }
+        : {}),
     }
   }
 
@@ -466,7 +470,8 @@ export const DB_TYPES: Record<Dialect, Record<string, TypeSpec>> = {
 }
 
 export function registerDbType(internalType: string, types: Partial<Record<Dialect, TypeSpec>>): void {
-  for (const [d, spec] of Object.entries(types) as Array<[Dialect, TypeSpec]>) DB_TYPES[d][internalType] = spec
+  for (const [d, spec] of Object.entries(types) as Array<[Dialect, TypeSpec]>)
+    DB_TYPES[d][internalType] = spec
 }
 
 export function dbTypeFor(field: Field<any, any>, dialect: Dialect): string | null {

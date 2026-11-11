@@ -12,7 +12,10 @@ function toQueryset<T>(source: Source<T>): QuerySet<T> {
 }
 
 /** `get()` or throw core `Http404` (Django's `get_object_or_404`). */
-export async function getObjectOr404<T = BaseModel>(source: Source<T>, ...lookup: FilterArg<T>[]): Promise<T> {
+export async function getObjectOr404<T = BaseModel>(
+  source: Source<T>,
+  ...lookup: FilterArg<T>[]
+): Promise<T> {
   const qs = toQueryset(source)
   try {
     return await qs.get(...lookup)
@@ -25,7 +28,10 @@ export async function getObjectOr404<T = BaseModel>(source: Source<T>, ...lookup
 }
 
 /** `filter()` results or throw `Http404` when empty (Django's `get_list_or_404`). */
-export async function getListOr404<T = BaseModel>(source: Source<T>, ...lookup: FilterArg<T>[]): Promise<T[]> {
+export async function getListOr404<T = BaseModel>(
+  source: Source<T>,
+  ...lookup: FilterArg<T>[]
+): Promise<T[]> {
   const qs = toQueryset(source)
   const list = await qs.filter(...lookup).fetch()
   if (!list.length) throw new Http404(`No ${qs.model._meta.objectName} matches the given query.`)

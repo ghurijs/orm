@@ -58,7 +58,10 @@ export interface RelatedFieldOptions extends FieldOptions {
 }
 
 /** Common base of ForeignKey, OneToOneField and ManyToManyField. */
-export abstract class RelatedField<T = unknown, O extends RelatedFieldOptions = RelatedFieldOptions> extends Field<T, O> {
+export abstract class RelatedField<
+  T = unknown,
+  O extends RelatedFieldOptions = RelatedFieldOptions,
+> extends Field<T, O> {
   override isRelation = true
   readonly to: RelationTarget
   /** Set when the target is resolved. */
@@ -131,10 +134,10 @@ export interface ForeignKeyOptions extends RelatedFieldOptions {
  * Many-to-one relation. The instance gets `${name}Id` (raw value, column `${name}_id`) and an accessor
  * `${name}` that resolves the related object (`await post.author`).
  */
-export class ForeignKey<M extends ModelClass = ModelClass, const O extends ForeignKeyOptions = ForeignKeyOptions> extends RelatedField<
-  InstanceType<M>,
-  O
-> {
+export class ForeignKey<
+  M extends ModelClass = ModelClass,
+  const O extends ForeignKeyOptions = ForeignKeyOptions,
+> extends RelatedField<InstanceType<M>, O> {
   static override readonly internalType: string = 'ForeignKey'
   declare readonly __target: M
   override manyToOne = true
@@ -147,7 +150,9 @@ export class ForeignKey<M extends ModelClass = ModelClass, const O extends Forei
     this.onDelete = options.onDelete ?? CASCADE
     this.toField = options.toField
     if (this.onDelete === SET_NULL && !this.null) {
-      throw new TypeError("Field specifies onDelete=SET_NULL, but cannot be null. Set null: true on the ForeignKey.")
+      throw new TypeError(
+        'Field specifies onDelete=SET_NULL, but cannot be null. Set null: true on the ForeignKey.',
+      )
     }
   }
 
@@ -227,7 +232,12 @@ export class ForeignKey<M extends ModelClass = ModelClass, const O extends Forei
     try {
       label = this.relatedModel._meta.label
     } catch {}
-    return this.withHintCommon({ widget: 'select', relatedModel: label, multiple: false, limitChoicesTo: this.limitChoicesTo })
+    return this.withHintCommon({
+      widget: 'select',
+      relatedModel: label,
+      multiple: false,
+      limitChoicesTo: this.limitChoicesTo,
+    })
   }
 
   protected override baseJsonSchema(): Record<string, unknown> {
@@ -247,10 +257,10 @@ export class ForeignKey<M extends ModelClass = ModelClass, const O extends Forei
   }
 }
 
-export class OneToOneField<M extends ModelClass = ModelClass, const O extends ForeignKeyOptions = ForeignKeyOptions> extends ForeignKey<
-  M,
-  O
-> {
+export class OneToOneField<
+  M extends ModelClass = ModelClass,
+  const O extends ForeignKeyOptions = ForeignKeyOptions,
+> extends ForeignKey<M, O> {
   static override readonly internalType: string = 'OneToOneField'
   override manyToOne = false
   override oneToOne = true
@@ -272,10 +282,10 @@ export interface ManyToManyFieldOptions extends RelatedFieldOptions {
 }
 
 /** Many-to-many relation through an intermediate table (auto-created like Django's). */
-export class ManyToManyField<M extends ModelClass = ModelClass, const O extends ManyToManyFieldOptions = ManyToManyFieldOptions> extends RelatedField<
-  unknown,
-  O
-> {
+export class ManyToManyField<
+  M extends ModelClass = ModelClass,
+  const O extends ManyToManyFieldOptions = ManyToManyFieldOptions,
+> extends RelatedField<unknown, O> {
   static override readonly internalType: string = 'ManyToManyField'
   declare readonly __target: M
   override manyToMany = true
@@ -328,7 +338,9 @@ export class ManyToManyField<M extends ModelClass = ModelClass, const O extends 
     const from = fks.find((f) => f.relatedModel === src)
     const to = fks.find((f) => f.relatedModel === tgt)
     if (!from || !to) {
-      throw new TypeError(`The through model of ${String(this)} must have foreign keys to both related models.`)
+      throw new TypeError(
+        `The through model of ${String(this)} must have foreign keys to both related models.`,
+      )
     }
     return [from.name, to.name]
   }
@@ -438,7 +450,12 @@ export class RelatedObject {
 
   /** Name used in lookups (`User.objects.filter({ posts__title: … })`). */
   get name(): string {
-    return this.field.relatedQueryName ?? (this.field.relatedName && !this.field.reverseHidden ? this.field.relatedName : lowerFirst(this.relatedModel._meta.objectName))
+    return (
+      this.field.relatedQueryName ??
+      (this.field.relatedName && !this.field.reverseHidden
+        ? this.field.relatedName
+        : lowerFirst(this.relatedModel._meta.objectName))
+    )
   }
 
   get relatedQueryName(): string {
@@ -476,7 +493,10 @@ export function invalidRelatedError(field: ForeignKey, value: unknown): Validati
   try {
     name = field.relatedModel._meta.verboseName
   } catch {}
-  return new ValidationError(`${name} instance with ${field.targetField.name} ${JSON.stringify(value)} does not exist.`, {
-    code: 'invalid',
-  })
+  return new ValidationError(
+    `${name} instance with ${field.targetField.name} ${JSON.stringify(value)} does not exist.`,
+    {
+      code: 'invalid',
+    },
+  )
 }

@@ -105,7 +105,14 @@ interface Hop {
   target: PathEntry
 }
 
-const TEXT_TYPES = new Set(['CharField', 'TextField', 'SlugField', 'EmailField', 'URLField', 'GenericIPAddressField'])
+const TEXT_TYPES = new Set([
+  'CharField',
+  'TextField',
+  'SlugField',
+  'EmailField',
+  'URLField',
+  'GenericIPAddressField',
+])
 
 export const LOOKUPS = new Set([
   'exact',
@@ -126,10 +133,26 @@ export const LOOKUPS = new Set([
   'regex',
   'iregex',
 ])
-export const TRANSFORMS = new Set(['date', 'year', 'month', 'day', 'hour', 'minute', 'second', 'week_day', 'quarter', 'time'])
+export const TRANSFORMS = new Set([
+  'date',
+  'year',
+  'month',
+  'day',
+  'hour',
+  'minute',
+  'second',
+  'week_day',
+  'quarter',
+  'time',
+])
 
 function isModelInstance(v: unknown): v is BaseModel {
-  return !!v && typeof v === 'object' && typeof (v as any).constructor?._meta === 'object' && '_state' in (v as object)
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    typeof (v as any).constructor?._meta === 'object' &&
+    '_state' in (v as object)
+  )
 }
 
 function isQuerySetLike(v: unknown): v is { state: QueryState; _isQuerySet: true } {
@@ -257,12 +280,17 @@ export class Scope implements CompileScope {
     return e
   }
 
-  private m2mSides(field: ManyToManyField, reverse: boolean): { src: ForeignKey; tgt: ForeignKey; target: ModelClass } {
+  private m2mSides(
+    field: ManyToManyField,
+    reverse: boolean,
+  ): { src: ForeignKey; tgt: ForeignKey; target: ModelClass } {
     const [a, b] = field.throughFieldNames()
     const meta = field.through._meta
     const fa = meta.getForwardField(a) as ForeignKey
     const fb = meta.getForwardField(b) as ForeignKey
-    return reverse ? { src: fb, tgt: fa, target: field.model } : { src: fa, tgt: fb, target: field.relatedModel }
+    return reverse
+      ? { src: fb, tgt: fa, target: field.model }
+      : { src: fa, tgt: fb, target: field.relatedModel }
   }
 
   private joinM2M(entry: PathEntry, key: string, field: ManyToManyField, reverse: boolean): PathEntry {
@@ -337,15 +365,21 @@ export class Scope implements CompileScope {
         if (f.oneToOne) {
           entry = this.joinReverse(entry, newKey, f)
           key = newKey
-          if (!nextIsField(entry.model)) return { kind: 'column', entry, field: entry.model._meta.pk, rest: parts.slice(i + 1) }
+          if (!nextIsField(entry.model))
+            return { kind: 'column', entry, field: entry.model._meta.pk, rest: parts.slice(i + 1) }
           continue
         }
         const m2m = f.manyToMany
         const existing = this.lookupPath(newKey)
         if (existing || allowMulti) {
-          entry = existing ?? (m2m ? this.joinM2M(entry, newKey, f.field as ManyToManyField, true) : this.joinReverse(entry, newKey, f))
+          entry =
+            existing ??
+            (m2m
+              ? this.joinM2M(entry, newKey, f.field as ManyToManyField, true)
+              : this.joinReverse(entry, newKey, f))
           key = newKey
-          if (!nextIsField(entry.model)) return { kind: 'column', entry, field: entry.model._meta.pk, rest: parts.slice(i + 1) }
+          if (!nextIsField(entry.model))
+            return { kind: 'column', entry, field: entry.model._meta.pk, rest: parts.slice(i + 1) }
           continue
         }
         return {
@@ -362,10 +396,18 @@ export class Scope implements CompileScope {
         if (existing || allowMulti) {
           entry = existing ?? this.joinM2M(entry, newKey, f, false)
           key = newKey
-          if (!nextIsField(entry.model)) return { kind: 'column', entry, field: entry.model._meta.pk, rest: parts.slice(i + 1) }
+          if (!nextIsField(entry.model))
+            return { kind: 'column', entry, field: entry.model._meta.pk, rest: parts.slice(i + 1) }
           continue
         }
-        return { kind: 'multi', prefixKey: newKey, from: entry, rel: f, reverseM2M: false, rest: parts.slice(i + 1) }
+        return {
+          kind: 'multi',
+          prefixKey: newKey,
+          from: entry,
+          rel: f,
+          reverseM2M: false,
+          rest: parts.slice(i + 1),
+        }
       }
       if (f instanceof ForeignKey && part === f.name) {
         const target = f.relatedModel
@@ -406,7 +448,8 @@ export class Scope implements CompileScope {
   refField(name: string): Field<any, any> | undefined {
     const parts = name.split(LOOKUP_SEP)
     const ann = this.findAnnotation(parts[0])
-    if (ann && parts.length === 1 && !this.rootEntry.model._meta.findField(parts[0])) return ann.outputField(this)
+    if (ann && parts.length === 1 && !this.rootEntry.model._meta.findField(parts[0]))
+      return ann.outputField(this)
     return fieldAtPath(this.rootEntry.model, parts)
   }
 
@@ -417,7 +460,11 @@ export class Scope implements CompileScope {
       // Untyped parameters would be inferred as text: give literals an explicit type.
       if (value instanceof Date) return Sql.param(value.toISOString()).wrap('CAST(', ' AS timestamptz)')
       if (typeof value === 'boolean') return Sql.param(value).wrap('CAST(', ' AS boolean)')
-      if (typeof value === 'number') return Sql.param(value).wrap('CAST(', Number.isInteger(value) ? ' AS bigint)' : ' AS double precision)')
+      if (typeof value === 'number')
+        return Sql.param(value).wrap(
+          'CAST(',
+          Number.isInteger(value) ? ' AS bigint)' : ' AS double precision)',
+        )
       if (typeof value === 'string') return Sql.param(value).wrap('CAST(', ' AS text)')
       return Sql.param(value)
     }
@@ -443,7 +490,12 @@ export class Scope implements CompileScope {
     const parts = agg.source.split(LOOKUP_SEP)
     const r = this.resolvePath(parts, { allowMulti: this.aggregateJoins })
     if (r.kind === 'annotation') {
-      return this.wrapAggregate(fn, distinct, r.expr.compile(this), agg.filter ? this.compileQ(agg.filter) : undefined)
+      return this.wrapAggregate(
+        fn,
+        distinct,
+        r.expr.compile(this),
+        agg.filter ? this.compileQ(agg.filter) : undefined,
+      )
     }
     if (r.kind === 'multi') {
       // Correlated scalar subquery: no row multiplication, no GROUP BY needed.
@@ -452,7 +504,8 @@ export class Scope implements CompileScope {
       sub.aggregateJoins = true
       const hop = this.buildHop(sub, r)
       const r2 = sub.resolvePath(parts, { allowMulti: true })
-      if (r2.kind !== 'column' || r2.rest.length) throw new FieldError(`Cannot aggregate over '${agg.source}'.`)
+      if (r2.kind !== 'column' || r2.rest.length)
+        throw new FieldError(`Cannot aggregate over '${agg.source}'.`)
       const inner = sub.col(r2.entry, r2.field.column)
       const where = [hop.correlate]
       if (agg.filter) where.push(sub.compileQ(agg.filter))
@@ -469,7 +522,9 @@ export class Scope implements CompileScope {
   }
 
   private wrapAggregate(fn: string, distinct: string, inner: Sql, filter?: Sql): Sql {
-    const arg = filter ? new Sql(['CASE WHEN ']).append(filter).append(' THEN ').append(inner).append(' ELSE NULL END') : inner
+    const arg = filter
+      ? new Sql(['CASE WHEN ']).append(filter).append(' THEN ').append(inner).append(' ELSE NULL END')
+      : inner
     const out = new Sql([`${fn}(${distinct}`]).append(arg).append(')')
     out.containsAggregate = true
     return out
@@ -480,7 +535,10 @@ export class Scope implements CompileScope {
   compileQ(q: QNode): Sql {
     const parts: Sql[] = []
     if (q.connector === 'AND') {
-      const groups = new Map<string, { r: Extract<Resolved, { kind: 'multi' }>; leaves: Array<[string, unknown]> }>()
+      const groups = new Map<
+        string,
+        { r: Extract<Resolved, { kind: 'multi' }>; leaves: Array<[string, unknown]> }
+      >()
       for (const child of q.children) {
         if (child instanceof QNode) {
           const s = this.compileQ(child)
@@ -525,7 +583,13 @@ export class Scope implements CompileScope {
       }
     }
     if (parts.length === 0) return q.negated ? Sql.raw('1 = 0') : new Sql()
-    let out = parts.length === 1 ? parts[0] : Sql.join(parts.map((p) => p.wrap('(', ')')), ` ${q.connector} `)
+    let out =
+      parts.length === 1
+        ? parts[0]
+        : Sql.join(
+            parts.map((p) => p.wrap('(', ')')),
+            ` ${q.connector} `,
+          )
     if (q.negated) {
       out = out.wrap(this.dialect === 'postgresql' ? 'NOT COALESCE((' : 'NOT COALESCE((', '), FALSE)')
     }
@@ -563,22 +627,35 @@ export class Scope implements CompileScope {
     const conds = leaves.map(([k, v]) => sub.compileLeaf(k, v))
     const out = new Sql(['EXISTS (SELECT 1 FROM ']).append(hop.from)
     for (const j of sub.joins) out.append(' ').append(j)
-    out.append(' WHERE ').append(Sql.join([hop.correlate, ...conds], ' AND ')).append(')')
+    out
+      .append(' WHERE ')
+      .append(Sql.join([hop.correlate, ...conds], ' AND '))
+      .append(')')
     return out
   }
 
   // ---- lookups ----------------------------------------------------------------------------------
 
-  private applyTransform(name: string, lhs: Sql, field: Field<any, any> | undefined): { lhs: Sql; field: Field<any, any> } {
+  private applyTransform(
+    name: string,
+    lhs: Sql,
+    field: Field<any, any> | undefined,
+  ): { lhs: Sql; field: Field<any, any> } {
     const isDateTime = field?.internalType === 'DateTimeField'
     const pg = this.dialect === 'postgresql'
     const intField = new IntegerField()
     if (name === 'date') {
       if (!isDateTime) return { lhs, field: new DateField() }
-      return { lhs: pg ? lhs.wrap("CAST((", " AT TIME ZONE 'UTC') AS date)") : lhs.wrap('substr(', ', 1, 10)'), field: new DateField() }
+      return {
+        lhs: pg ? lhs.wrap('CAST((', " AT TIME ZONE 'UTC') AS date)") : lhs.wrap('substr(', ', 1, 10)'),
+        field: new DateField(),
+      }
     }
     if (name === 'time') {
-      return { lhs: pg ? lhs.wrap("CAST((", " AT TIME ZONE 'UTC') AS time)") : lhs.wrap('substr(', ', 12, 8)'), field: field! }
+      return {
+        lhs: pg ? lhs.wrap('CAST((', " AT TIME ZONE 'UTC') AS time)") : lhs.wrap('substr(', ', 12, 8)'),
+        field: field!,
+      }
     }
     const parts: Record<string, [string, string]> = {
       year: ['%Y', 'YEAR'],
@@ -621,11 +698,18 @@ export class Scope implements CompileScope {
   }
 
   private textLhs(lhs: Sql, field: Field<any, any> | undefined): Sql {
-    if (this.dialect === 'postgresql' && (!field || !TEXT_TYPES.has(field.internalType))) return lhs.wrap('CAST(', ' AS text)')
+    if (this.dialect === 'postgresql' && (!field || !TEXT_TYPES.has(field.internalType)))
+      return lhs.wrap('CAST(', ' AS text)')
     return lhs
   }
 
-  compileLookup(lhsIn: Sql, fieldIn: Field<any, any> | undefined, rest: string[], value: unknown, key: string): Sql {
+  compileLookup(
+    lhsIn: Sql,
+    fieldIn: Field<any, any> | undefined,
+    rest: string[],
+    value: unknown,
+    key: string,
+  ): Sql {
     let lhs = lhsIn
     let field = fieldIn
     let lookup = 'exact'
@@ -639,7 +723,9 @@ export class Scope implements CompileScope {
         lookup = p
         continue
       }
-      throw new FieldError(`Unsupported lookup '${p}' for ${field?.internalType ?? 'expression'} in '${key}'.`)
+      throw new FieldError(
+        `Unsupported lookup '${p}' for ${field?.internalType ?? 'expression'} in '${key}'.`,
+      )
     }
     const pg = this.dialect === 'postgresql'
     switch (lookup) {
@@ -649,7 +735,10 @@ export class Scope implements CompileScope {
       case 'iexact': {
         if (value === null || value === undefined) return lhs.wrap('', ' IS NULL')
         const rhs = this.prepValue(value instanceof Expression ? value : String(value), undefined)
-        return new Sql().append(this.textLhs(lhs, field).wrap('UPPER(', ')')).append(' = ').append(rhs.wrap('UPPER(', ')'))
+        return new Sql()
+          .append(this.textLhs(lhs, field).wrap('UPPER(', ')'))
+          .append(' = ')
+          .append(rhs.wrap('UPPER(', ')'))
       }
       case 'gt':
       case 'gte':
@@ -660,14 +749,22 @@ export class Scope implements CompileScope {
       }
       case 'in': {
         if (isQuerySetLike(value)) {
-          return new Sql().append(lhs).append(' IN (').append(compileSubquery(value.state, this.compiler)).append(')')
+          return new Sql()
+            .append(lhs)
+            .append(' IN (')
+            .append(compileSubquery(value.state, this.compiler))
+            .append(')')
         }
         const items = [...((value as Iterable<unknown>) ?? [])].filter((v) => v !== null && v !== undefined)
         if (items.length === 0) return Sql.raw('1 = 0')
         const max = this.compiler.features?.maxQueryParams ?? 999
         if (!pg && items.length > Math.min(50, max / 2) && !items.some((v) => v instanceof Expression)) {
           const raw = items.map((v) => this.rawValue(v, field))
-          return new Sql().append(lhs).append(' IN (SELECT value FROM json_each(').append(Sql.param(JSON.stringify(raw))).append('))')
+          return new Sql()
+            .append(lhs)
+            .append(' IN (SELECT value FROM json_each(')
+            .append(Sql.param(JSON.stringify(raw)))
+            .append('))')
         }
         return new Sql()
           .append(lhs)
@@ -677,7 +774,12 @@ export class Scope implements CompileScope {
       }
       case 'range': {
         const [a, b] = value as [unknown, unknown]
-        return new Sql().append(lhs).append(' BETWEEN ').append(this.prepValue(a, field)).append(' AND ').append(this.prepValue(b, field))
+        return new Sql()
+          .append(lhs)
+          .append(' BETWEEN ')
+          .append(this.prepValue(a, field))
+          .append(' AND ')
+          .append(this.prepValue(b, field))
       }
       case 'isnull':
         return lhs.wrap('', value ? ' IS NULL' : ' IS NOT NULL')
@@ -695,7 +797,14 @@ export class Scope implements CompileScope {
           // pattern from another column/expression: compare with string functions (no wildcards involved)
           let l = textL
           let r = value.compile(this)
-          if (pg && !(value instanceof Expression && value.outputField(this) && TEXT_TYPES.has(value.outputField(this)!.internalType))) {
+          if (
+            pg &&
+            !(
+              value instanceof Expression &&
+              value.outputField(this) &&
+              TEXT_TYPES.has(value.outputField(this)!.internalType)
+            )
+          ) {
             r = r.wrap('CAST(', ' AS text)')
           }
           if (insensitive) {
@@ -733,8 +842,15 @@ export class Scope implements CompileScope {
           throw new NotSupportedError(`The '${lookup}' lookup is not supported on this database backend.`)
         }
         const pattern = String(value)
-        if (pg) return new Sql().append(this.textLhs(lhs, field)).append(lookup === 'regex' ? ' ~ ' : ' ~* ').append(Sql.param(pattern))
-        return new Sql().append(lhs).append(' REGEXP ').append(Sql.param(lookup === 'iregex' ? `(?i)${pattern}` : pattern))
+        if (pg)
+          return new Sql()
+            .append(this.textLhs(lhs, field))
+            .append(lookup === 'regex' ? ' ~ ' : ' ~* ')
+            .append(Sql.param(pattern))
+        return new Sql()
+          .append(lhs)
+          .append(' REGEXP ')
+          .append(Sql.param(lookup === 'iregex' ? `(?i)${pattern}` : pattern))
       }
     }
     throw new FieldError(`Unsupported lookup '${lookup}'.`)
@@ -787,7 +903,9 @@ function orderingFor(state: QueryState, grouping: boolean): Array<string | Order
   let ordering = state.ordering ?? (grouping ? [] : state.model._meta.ordering)
   if (state.reversed) {
     if (!ordering.length) ordering = [state.model._meta.pk.name]
-    ordering = ordering.map((o) => (o instanceof OrderBy ? o.reversed() : o.startsWith('-') ? o.slice(1) : o === '?' ? o : `-${o}`))
+    ordering = ordering.map((o) =>
+      o instanceof OrderBy ? o.reversed() : o.startsWith('-') ? o.slice(1) : o === '?' ? o : `-${o}`,
+    )
   }
   return ordering
 }
@@ -802,7 +920,11 @@ export interface SelectOptions {
 }
 
 /** Compile a SELECT for a QueryState. */
-export function compileSelect(state: QueryState, compiler: Compiler, opts: SelectOptions = {}): CompiledSelect {
+export function compileSelect(
+  state: QueryState,
+  compiler: Compiler,
+  opts: SelectOptions = {},
+): CompiledSelect {
   const model = state.model
   const meta = model._meta
   const scope = Scope.root(compiler, model)
@@ -851,7 +973,10 @@ export function compileSelect(state: QueryState, compiler: Compiler, opts: Selec
     const annotationNames = new Set(state.annotations.map(([n]) => n))
     const listed = new Set(names)
     const extraAnnotations = spec.fields.length
-      ? state.annotations.slice(spec.annotationStart).map(([n]) => n).filter((n) => !listed.has(n))
+      ? state.annotations
+          .slice(spec.annotationStart)
+          .map(([n]) => n)
+          .filter((n) => !listed.has(n))
       : []
     for (const name of [...names, ...extraAnnotations]) {
       const alias = nextColAlias('v')
@@ -883,14 +1008,22 @@ export function compileSelect(state: QueryState, compiler: Compiler, opts: Selec
         select.push(new Sql().append(out).append(` AS ${ident(alias).chunks[0]}`))
         groupByExprs.push(out)
         const ff = f
-        columns.push({ key: name, alias, convert: (v) => (v === null || v === undefined ? null : ff.fromDb(v, compiler.dialect)) })
+        columns.push({
+          key: name,
+          alias,
+          convert: (v) => (v === null || v === undefined ? null : ff.fromDb(v, compiler.dialect)),
+        })
         continue
       }
       const colSql = scope.col(r.entry, r.field.column)
       select.push(new Sql().append(colSql).append(` AS ${ident(alias).chunks[0]}`))
       groupByExprs.push(colSql)
       const field = r.field
-      columns.push({ key: name, alias, convert: (v) => (v === null || v === undefined ? null : field.fromDb(v, compiler.dialect)) })
+      columns.push({
+        key: name,
+        alias,
+        convert: (v) => (v === null || v === undefined ? null : field.fromDb(v, compiler.dialect)),
+      })
     }
     plan = { kind: 'values', mode: spec.kind, columns }
     if (grouping && state.groupBy) {
@@ -959,7 +1092,14 @@ export function compileSelect(state: QueryState, compiler: Compiler, opts: Selec
             name,
             reverse,
             pkAlias,
-            plan: { kind: 'model', model: target, fields: relFields, deferred: [], related: [], annotations: [] },
+            plan: {
+              kind: 'model',
+              model: target,
+              fields: relFields,
+              deferred: [],
+              related: [],
+              annotations: [],
+            },
           }
           parentPlan.related.push(existing)
         }
@@ -988,7 +1128,13 @@ export function compileSelect(state: QueryState, compiler: Compiler, opts: Selec
   out.append(Sql.join(select))
   out.append(' FROM ').append(ident(meta.dbTable)).append(' AS ').append(ident(root.alias!))
   for (const j of scope.joins) out.append(' ').append(j)
-  if (where.length) out.append(' WHERE ').append(Sql.join(where.map((w) => (where.length > 1 ? w.wrap('(', ')') : w)), ' AND '))
+  if (where.length)
+    out.append(' WHERE ').append(
+      Sql.join(
+        where.map((w) => (where.length > 1 ? w.wrap('(', ')') : w)),
+        ' AND ',
+      ),
+    )
   const needsGroup = grouping || (selectHasAggregate && groupByExprs.length > 0) || having.length > 0
   if (needsGroup && groupByExprs.length) out.append(' GROUP BY ').append(Sql.join(groupByExprs))
   if (having.length) out.append(' HAVING ').append(Sql.join(having, ' AND '))
@@ -1038,7 +1184,8 @@ function compileOrderItem(scope: Scope, o: string | OrderBy, plan: ModelPlan | V
   }
   const r = scope.resolvePath(name.split(LOOKUP_SEP), { allowMulti: true })
   if (r.kind === 'annotation') return r.expr.compile(scope).wrap('', dir + pgNulls(scope, desc, true))
-  if (r.kind !== 'column' || r.rest.length) throw new FieldError(`Cannot resolve keyword '${name}' into field for ordering.`)
+  if (r.kind !== 'column' || r.rest.length)
+    throw new FieldError(`Cannot resolve keyword '${name}' into field for ordering.`)
   const nullable = r.field.null || r.entry !== scope.rootEntry
   return scope.col(r.entry, r.field.column).wrap('', dir + pgNulls(scope, desc, nullable))
 }
@@ -1048,7 +1195,10 @@ export function compileSubquery(state: QueryState, compiler: Compiler): Sql {
   let column = state.model._meta.pk.name
   if (state.values) {
     const fields = state.values.fields
-    if (fields.length !== 1) throw new FieldError('A subquery used as a value must select exactly one field (valuesList("x", { flat: true })).')
+    if (fields.length !== 1)
+      throw new FieldError(
+        'A subquery used as a value must select exactly one field (valuesList("x", { flat: true })).',
+      )
     column = fields[0]
   }
   const sliced = isSliced(state)
@@ -1078,7 +1228,13 @@ export function compileCount(state: QueryState, compiler: Compiler): Sql {
   const out = new Sql(['SELECT COUNT(*) AS "n" FROM '])
   out.append(ident(state.model._meta.dbTable)).append(' AS ').append(ident(scope.rootEntry.alias!))
   for (const j of scope.joins) out.append(' ').append(j)
-  if (where.length) out.append(' WHERE ').append(Sql.join(where.map((w) => w.wrap('(', ')')), ' AND '))
+  if (where.length)
+    out.append(' WHERE ').append(
+      Sql.join(
+        where.map((w) => w.wrap('(', ')')),
+        ' AND ',
+      ),
+    )
   return out
 }
 
@@ -1102,12 +1258,18 @@ export function compileUpdate(state: QueryState, compiler: Compiler, values: Rec
   for (const [name, value] of Object.entries(values)) {
     const field = meta.getForwardField(name)
     if (!field) throw new FieldError(`${meta.objectName} has no field named '${name}'`)
-    if (!field.concrete) throw new FieldError(`Cannot update model field '${name}' (only non-relations and foreign keys permitted).`)
+    if (!field.concrete)
+      throw new FieldError(
+        `Cannot update model field '${name}' (only non-relations and foreign keys permitted).`,
+      )
     let rhs: Sql
     if (value instanceof Expression) rhs = value.compile(setScope)
     else {
       const v = isModelInstance(value) && !(field instanceof ForeignKey) ? (value as BaseModel).pk : value
-      rhs = v === null || v === undefined ? Sql.raw('NULL') : field.dbParam(field.getPrepValue(v), compiler.dialect)
+      rhs =
+        v === null || v === undefined
+          ? Sql.raw('NULL')
+          : field.dbParam(field.getPrepValue(v), compiler.dialect)
     }
     assignments.push(new Sql().append(ident(field.column)).append(' = ').append(rhs))
   }
@@ -1118,7 +1280,12 @@ export function compileUpdate(state: QueryState, compiler: Compiler, values: Rec
 }
 
 /** Map a raw row to a model instance according to a ModelPlan. */
-export function readModelRow(plan: ModelPlan, row: Record<string, unknown>, scope: Scope, using: string | undefined): BaseModel {
+export function readModelRow(
+  plan: ModelPlan,
+  row: Record<string, unknown>,
+  scope: Scope,
+  using: string | undefined,
+): BaseModel {
   const values: Record<string, unknown> = {}
   for (const { field, alias } of plan.fields) values[field.attname] = field.fromDb(row[alias], scope.dialect)
   const obj = (plan.model as any)._fromDb(values, plan.deferred, using) as BaseModel
@@ -1147,4 +1314,3 @@ export function readValuesRow(plan: ValuesPlan, row: Record<string, unknown>): u
   for (const c of cols) out[c.key] = c.convert(row[c.alias])
   return out
 }
-

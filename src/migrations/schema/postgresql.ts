@@ -49,12 +49,22 @@ export class PostgresSchemaEditor extends BaseSchemaEditor {
     return `ALTER TABLE ${this.quoteName(model._meta.dbTable)} DROP CONSTRAINT ${this.quoteName(name)}`
   }
 
-  protected async addCheckConstraint(model: ModelClass, c: Extract<ConstraintSpec, { type: 'check' }>): Promise<void> {
-    await this.execute(`ALTER TABLE ${this.quoteName(model._meta.dbTable)} ADD CONSTRAINT ${this.quoteName(c.name)} CHECK (${c.check})`)
+  protected async addCheckConstraint(
+    model: ModelClass,
+    c: Extract<ConstraintSpec, { type: 'check' }>,
+  ): Promise<void> {
+    await this.execute(
+      `ALTER TABLE ${this.quoteName(model._meta.dbTable)} ADD CONSTRAINT ${this.quoteName(c.name)} CHECK (${c.check})`,
+    )
   }
 
-  protected async removeCheckConstraint(model: ModelClass, c: Extract<ConstraintSpec, { type: 'check' }>): Promise<void> {
-    await this.execute(`ALTER TABLE ${this.quoteName(model._meta.dbTable)} DROP CONSTRAINT ${this.quoteName(c.name)}`)
+  protected async removeCheckConstraint(
+    model: ModelClass,
+    c: Extract<ConstraintSpec, { type: 'check' }>,
+  ): Promise<void> {
+    await this.execute(
+      `ALTER TABLE ${this.quoteName(model._meta.dbTable)} DROP CONSTRAINT ${this.quoteName(c.name)}`,
+    )
   }
 
   protected override deleteTableSql(table: string): string {
@@ -62,7 +72,9 @@ export class PostgresSchemaEditor extends BaseSchemaEditor {
   }
 
   async renameColumn(table: string, oldColumn: string, newColumn: string): Promise<void> {
-    await this.execute(`ALTER TABLE ${this.quoteName(table)} RENAME COLUMN ${this.quoteName(oldColumn)} TO ${this.quoteName(newColumn)}`)
+    await this.execute(
+      `ALTER TABLE ${this.quoteName(table)} RENAME COLUMN ${this.quoteName(oldColumn)} TO ${this.quoteName(newColumn)}`,
+    )
   }
 
   async tableNames(): Promise<string[]> {

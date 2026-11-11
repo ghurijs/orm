@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { captureQueries, type M2MChangedArgs, m2mChanged, Prefetch, RelatedRef } from '../src/index'
 import { backends, blogFixture, titles, useTestDatabase } from './helpers'
-import { Author, Category, Comment, Post, Profile, Tag } from './models'
+import { Author, type Category, Comment, Post, Profile, Tag } from './models'
 
 describe.each(backends)('relations (%s)', (backend) => {
   useTestDatabase(backend)
@@ -25,7 +25,7 @@ describe.each(backends)('relations (%s)', (backend) => {
     await p.save()
     expect((await Post.objects.get({ pk: p.pk })).authorId).toBe(bob.id)
     // assigning a raw id clears the cache
-    p.author = ann.id
+    ;(p as any).author = ann.id
     expect(p.authorId).toBe(ann.id)
     expect((await p.author).name).toBe('Ann')
     // nullable FK resolves to null
@@ -117,14 +117,23 @@ describe.each(backends)('relations (%s)', (backend) => {
 
   it('one-to-one in both directions', async () => {
     const { ann, bob } = await blogFixture()
-    const profile = await Profile.objects.create({ author: ann, website: 'https://ann.dev', settings: { theme: 'dark' } })
+    const profile = await Profile.objects.create({
+      author: ann,
+      website: 'https://ann.dev',
+      settings: { theme: 'dark' },
+    })
     const fetched = await Author.objects.get({ pk: ann.pk })
     const viaReverse = await fetched.profile
     expect(viaReverse.website).toBe('https://ann.dev')
     expect((await (await Profile.objects.get({ pk: profile.pk })).author).name).toBe('Ann')
     await expect(Promise.resolve(bob.profile)).rejects.toBeInstanceOf(Profile.DoesNotExist)
-    expect((await Author.objects.filter({ profile__website__contains: 'ann' })).map((a) => a.name)).toEqual(['Ann'])
-    expect((await Author.objects.filter({ profile__isnull: true })).map((a) => a.name)).toEqual(['Bob', 'Cid'])
+    expect((await Author.objects.filter({ profile__website__contains: 'ann' })).map((a) => a.name)).toEqual([
+      'Ann',
+    ])
+    expect((await Author.objects.filter({ profile__isnull: true })).map((a) => a.name)).toEqual([
+      'Bob',
+      'Cid',
+    ])
     const withProfile = await Author.objects.selectRelated('profile').get({ pk: ann.pk })
     expect((withProfile.profile as Profile).settings).toEqual({ theme: 'dark' })
   })
@@ -137,7 +146,9 @@ describe.each(backends)('relations (%s)', (backend) => {
         p.title,
         (p.author as Author).name,
         p.category ? (p.category as Category).name : null,
-        p.category && (p.category as Category).parent ? ((p.category as Category).parent as Category).name : null,
+        p.category && (p.category as Category).parent
+          ? ((p.category as Category).parent as Category).name
+          : null,
       ])
     })
     expect(queries.length).toBe(1)
@@ -170,7 +181,10 @@ describe.each(backends)('relations (%s)', (backend) => {
     expect(await ann.posts.filter({ views__gt: 20 }).count()).toBe(1)
     // Prefetch with custom queryset and toAttr
     const posts = await Post.objects.prefetchRelated(
-      new Prefetch('comments', { queryset: Comment.objects.filter({ approved: true }), toAttr: 'approvedComments' }),
+      new Prefetch('comments', {
+        queryset: Comment.objects.filter({ approved: true }),
+        toAttr: 'approvedComments',
+      }),
       'author',
     )
     const p1 = posts.find((p) => p.slug === 'hello-ghuri') as any
@@ -184,14 +198,20 @@ describe.each(backends)('relations (%s)', (backend) => {
 
   it('reverse accessor names, relatedObjects and through models', async () => {
     const meta = Author._meta
-    const rels = meta.relatedObjects.map((r) => `${r.relatedModel._meta.objectName}.${r.field.name}:${r.getAccessorName()}`)
+    const rels = meta.relatedObjects.map(
+      (r) => `${r.relatedModel._meta.objectName}.${r.field.name}:${r.getAccessorName()}`,
+    )
     expect(rels).toContain('Post.author:posts')
     expect(rels).toContain('Comment.author:comments')
     expect(rels).toContain('Profile.author:profile')
     const tagsField = Post._meta.getField('tags') as any
     expect(tagsField.through._meta.dbTable).toBe('tests_post_tags')
     expect(tagsField.through._meta.autoCreated).toBe(true)
-    expect(tagsField.through._meta.concreteFields.map((f: any) => f.column)).toEqual(['id', 'post_id', 'tag_id'])
+    expect(tagsField.through._meta.concreteFields.map((f: any) => f.column)).toEqual([
+      'id',
+      'post_id',
+      'tag_id',
+    ])
     expect(Tag._meta.relatedObjects.some((r) => r.manyToMany && r.getAccessorName() === 'posts')).toBe(true)
   })
 })

@@ -1,7 +1,15 @@
 import { atomic, connections } from '../db/connections'
 import { ProtectedError, RestrictedError } from '../errors'
 import type { Field } from '../fields/base'
-import { CASCADE, DO_NOTHING, type ForeignKey, PROTECT, RESTRICT, SET_DEFAULT, SET_NULL } from '../fields/related'
+import {
+  CASCADE,
+  DO_NOTHING,
+  type ForeignKey,
+  PROTECT,
+  RESTRICT,
+  SET_DEFAULT,
+  SET_NULL,
+} from '../fields/related'
 import { Compiler, compilePkSubquery } from '../query/compiler'
 import type { QuerySet } from '../query/queryset'
 import { ident, Sql } from '../query/sql'
@@ -58,7 +66,9 @@ export class Collector {
   /** No signal receivers and no relations that need emulation → plain DELETE. */
   canFastDelete(model: ModelClass): boolean {
     if (preDelete.hasListeners(model) || postDelete.hasListeners(model)) return false
-    return model._meta.allRelatedObjects.every((r) => r.manyToMany || (r.field as ForeignKey).onDelete === DO_NOTHING)
+    return model._meta.allRelatedObjects.every(
+      (r) => r.manyToMany || (r.field as ForeignKey).onDelete === DO_NOTHING,
+    )
   }
 
   async collectQuerySet(qs: QuerySet<BaseModel>): Promise<void> {
@@ -81,9 +91,16 @@ export class Collector {
       const onDelete = fk.onDelete
       if (onDelete === DO_NOTHING) continue
       const relatedModel = rel.relatedModel
-      const values = [...new Set(newObjs.map((o) => (o as any)[fk.targetField.attname]).filter((v) => v !== null && v !== undefined))]
+      const values = [
+        ...new Set(
+          newObjs.map((o) => (o as any)[fk.targetField.attname]).filter((v) => v !== null && v !== undefined),
+        ),
+      ]
       if (!values.length) continue
-      const qs = relatedModel._baseManager.getQueryset().using(this.using).filter({ [`${fk.name}__in`]: values })
+      const qs = relatedModel._baseManager
+        .getQueryset()
+        .using(this.using)
+        .filter({ [`${fk.name}__in`]: values })
       if (onDelete === CASCADE) {
         this.addChild(model, relatedModel)
         if (this.canFastDelete(relatedModel)) {
@@ -163,7 +180,8 @@ export class Collector {
         const d = conn.dialect
         const maxParams = Math.max(1, conn.features.maxQueryParams - 5)
         for (const [model, bucket] of this.data) {
-          for (const obj of bucket.values()) await preDelete.send(model, { instance: obj, using: this.using, origin: this.origin })
+          for (const obj of bucket.values())
+            await preDelete.send(model, { instance: obj, using: this.using, origin: this.origin })
         }
         for (const qs of this.fastDeletes) {
           const compiler = new Compiler(d, conn.features)
@@ -179,7 +197,10 @@ export class Collector {
           if (!objs.length) continue
           const meta = upd.model._meta
           for (const batch of chunk(objs, maxParams - 1)) {
-            const value = upd.value === null || upd.value === undefined ? Sql.raw('NULL') : upd.field.dbParam(upd.value, d)
+            const value =
+              upd.value === null || upd.value === undefined
+                ? Sql.raw('NULL')
+                : upd.field.dbParam(upd.value, d)
             const q = new Sql(['UPDATE '])
               .append(ident(meta.dbTable))
               .append(' SET ')
@@ -216,7 +237,8 @@ export class Collector {
           }
         }
         for (const [model, bucket] of this.data) {
-          for (const obj of bucket.values()) await postDelete.send(model, { instance: obj, using: this.using, origin: this.origin })
+          for (const obj of bucket.values())
+            await postDelete.send(model, { instance: obj, using: this.using, origin: this.origin })
         }
       },
       { using: this.using },

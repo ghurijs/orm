@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach } from 'vitest'
 import { setupTestDatabase, type TestBackend, type TestDatabase, testBackends } from '../src/testing'
-import { allModels, Author, Category, Comment, Post, Tag } from './models'
+import { Author, allModels, Category, Comment, Post, Tag } from './models'
 
 export const backends = testBackends()
 

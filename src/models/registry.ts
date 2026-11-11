@@ -122,7 +122,10 @@ export class ModelRegistry {
   checkPending(): void {
     const left = this.resolvePending()
     if (left.length) {
-      const names = left.map((f) => `${f.model?._meta?.objectName ?? '?'}.${f.name} → ${String(typeof f.to === 'string' ? f.to : 'lazy target')}`)
+      const names = left.map(
+        (f) =>
+          `${f.model?._meta?.objectName ?? '?'}.${f.name} → ${String(typeof f.to === 'string' ? f.to : 'lazy target')}`,
+      )
       throw new ImproperlyConfigured(`Unresolved model relations: ${names.join(', ')}`)
     }
   }

@@ -24,6 +24,7 @@ import {
   PositiveIntegerField,
   PROTECT,
   RESTRICT,
+  type Related,
   type RelatedManager,
   SET,
   SET_DEFAULT,
@@ -33,7 +34,6 @@ import {
   TimeField,
   URLField,
   UUIDField,
-  type Related,
 } from '../src/index'
 
 export class Author extends Model({
@@ -69,6 +69,7 @@ export class Category extends Model({
   declare static objects: Manager<Category>
   static Meta = { appLabel: 'tests', verboseNamePlural: 'categories' }
   declare children: RelatedManager<Category>
+  declare posts: RelatedManager<Post>
 }
 
 export class Tag extends Model({
@@ -93,7 +94,12 @@ export class Post extends Model({
   views: new IntegerField({ default: 0, validators: [new MinValueValidator(0)] }),
   rating: new DecimalField({ maxDigits: 5, decimalPlaces: 2, null: true, blank: true }),
   author: new ForeignKey(() => Author, { onDelete: CASCADE, relatedName: 'posts' }),
-  category: new ForeignKey(() => Category, { onDelete: SET_NULL, null: true, blank: true, relatedName: 'posts' }),
+  category: new ForeignKey(() => Category, {
+    onDelete: SET_NULL,
+    null: true,
+    blank: true,
+    relatedName: 'posts',
+  }),
   tags: new ManyToManyField(() => Tag, { blank: true, relatedName: 'posts' }),
   publishDate: new DateField({ null: true, blank: true }),
   createdAt: new DateTimeField({ autoNowAdd: true }),
@@ -119,7 +125,12 @@ export class Post extends Model({
 
 export class Comment extends Model({
   post: new ForeignKey(() => Post, { onDelete: CASCADE, relatedName: 'comments' }),
-  author: new ForeignKey(() => Author, { onDelete: PROTECT, null: true, blank: true, relatedName: 'comments' }),
+  author: new ForeignKey(() => Author, {
+    onDelete: PROTECT,
+    null: true,
+    blank: true,
+    relatedName: 'comments',
+  }),
   text: new TextField(),
   score: new IntegerField({ default: 0 }),
   approved: new BooleanField({ default: false }),
@@ -169,11 +180,29 @@ export const fallbackOwnerId = { value: null as number | null }
 export class Pet extends Model({
   name: new CharField({ maxLength: 50 }),
   protectOwner: new ForeignKey(() => Owner, { onDelete: PROTECT, null: true, relatedName: 'protectedPets' }),
-  restrictOwner: new ForeignKey(() => Owner, { onDelete: RESTRICT, null: true, relatedName: 'restrictedPets' }),
+  restrictOwner: new ForeignKey(() => Owner, {
+    onDelete: RESTRICT,
+    null: true,
+    relatedName: 'restrictedPets',
+  }),
   nullOwner: new ForeignKey(() => Owner, { onDelete: SET_NULL, null: true, relatedName: 'nulledPets' }),
-  defaultOwner: new ForeignKey(() => Owner, { onDelete: SET_DEFAULT, null: true, default: null, relatedName: 'defaultedPets' }),
-  setOwner: new ForeignKey(() => Owner, { onDelete: SET(() => fallbackOwnerId.value), null: true, relatedName: 'setPets' }),
-  loudOwner: new ForeignKey(() => Owner, { onDelete: DO_NOTHING, null: true, dbConstraint: false, relatedName: 'loudPets' }),
+  defaultOwner: new ForeignKey(() => Owner, {
+    onDelete: SET_DEFAULT,
+    null: true,
+    default: null,
+    relatedName: 'defaultedPets',
+  }),
+  setOwner: new ForeignKey(() => Owner, {
+    onDelete: SET(() => fallbackOwnerId.value),
+    null: true,
+    relatedName: 'setPets',
+  }),
+  loudOwner: new ForeignKey(() => Owner, {
+    onDelete: DO_NOTHING,
+    null: true,
+    dbConstraint: false,
+    relatedName: 'loudPets',
+  }),
   cascadeOwner: new ForeignKey(() => Owner, { onDelete: CASCADE, null: true, relatedName: 'cascadePets' }),
 }) {
   declare static objects: Manager<Pet>

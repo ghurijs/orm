@@ -38,7 +38,7 @@ describe.each(backends)('type round-trips (%s)', (backend) => {
     expect(r.flag).toBe(true)
     expect(r.day).toBe('2024-02-29')
     expect(r.at).toBeInstanceOf(Date)
-    expect(r.at.toISOString()).toBe(at.toISOString())
+    expect(r.at?.toISOString()).toBe(at.toISOString())
     expect(r.time).toBe('13:45:00')
     expect(r.dur).toBe(90_000)
     expect(r.data).toEqual({ a: [1, 2, { b: null }], s: 'x', n: 1.5, t: true })
@@ -48,7 +48,15 @@ describe.each(backends)('type round-trips (%s)', (backend) => {
 
     const empty = await Sample.objects.create({})
     const e = await Sample.objects.get({ pk: empty.pk })
-    expect([e.int, e.flag, e.at, e.data, e.blob, e.dec, e.day]).toEqual([null, null, null, null, null, null, null])
+    expect([e.int, e.flag, e.at, e.data, e.blob, e.dec, e.day]).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ])
     const f = await Sample.objects.create({ flag: false, data: 'just a string', dec: 0.1 as any })
     const fr = await Sample.objects.get({ pk: f.pk })
     expect(fr.flag).toBe(false)
@@ -57,7 +65,12 @@ describe.each(backends)('type round-trips (%s)', (backend) => {
   })
 
   it('filters use the same conversions (booleans, dates, decimals, json, uuid)', async () => {
-    await Sample.objects.create({ flag: true, at: new Date('2020-01-01T00:00:00Z'), dec: '2.500', uuid: '6f9619ff-8b86-d011-b42d-00cf4fc964ff' })
+    await Sample.objects.create({
+      flag: true,
+      at: new Date('2020-01-01T00:00:00Z'),
+      dec: '2.500',
+      uuid: '6f9619ff-8b86-d011-b42d-00cf4fc964ff',
+    })
     await Sample.objects.create({ flag: false, at: new Date('2021-01-01T00:00:00Z'), dec: '10.000' })
     expect(await Sample.objects.filter({ flag: true }).count()).toBe(1)
     expect(await Sample.objects.filter({ flag: 'false' }).count()).toBe(1)
@@ -66,7 +79,7 @@ describe.each(backends)('type round-trips (%s)', (backend) => {
     expect(await Sample.objects.filter({ dec__gt: 2.4 }).count()).toBe(2)
     expect(await Sample.objects.filter({ uuid: '6F9619FF8B86D011B42D00CF4FC964FF' }).count()).toBe(1)
     expect(await Sample.objects.filter({ uuid__icontains: '8b86' }).count()).toBe(1)
-    expect((await Sample.objects.orderBy('dec').valuesList('dec', { flat: true }))).toEqual(['2.500', '10.000'])
+    expect(await Sample.objects.orderBy('dec').valuesList('dec', { flat: true })).toEqual(['2.500', '10.000'])
   })
 
   it('drizzle escape hatch shares the converted values', async () => {

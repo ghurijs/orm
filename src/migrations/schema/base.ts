@@ -140,7 +140,10 @@ export abstract class BaseSchemaEditor {
       const desc = n.startsWith('-')
       const name = desc ? n.slice(1) : n
       const f = model._meta.getForwardField(name)
-      if (!f || !f.concrete) throw new NotSupportedError(`Index/constraint field '${name}' is not a concrete field of ${model._meta.objectName}.`)
+      if (!f?.concrete)
+        throw new NotSupportedError(
+          `Index/constraint field '${name}' is not a concrete field of ${model._meta.objectName}.`,
+        )
       return desc ? `${this.quoteName(f.column)} DESC` : this.quoteName(f.column)
     })
   }
@@ -176,11 +179,15 @@ export abstract class BaseSchemaEditor {
       const cols = ut.map((n) => meta.getForwardField(n)?.column ?? n)
       out.push({ fields: ut, name: this.createName(meta.dbTable, cols, '_uniq') })
     }
-    for (const c of meta.constraints) if (c.type === 'unique') out.push({ fields: c.fields, name: c.name, condition: c.condition })
+    for (const c of meta.constraints)
+      if (c.type === 'unique') out.push({ fields: c.fields, name: c.name, condition: c.condition })
     return out
   }
 
-  abstract createUniqueSql(model: ModelClass, u: { fields: string[]; name: string; condition?: string }): string
+  abstract createUniqueSql(
+    model: ModelClass,
+    u: { fields: string[]; name: string; condition?: string },
+  ): string
   abstract deleteUniqueSql(model: ModelClass, name: string): string
 
   // ---- operations -------------------------------------------------------------------------------
@@ -230,8 +237,14 @@ export abstract class BaseSchemaEditor {
     else await this.removeCheckConstraint(model, c)
   }
 
-  protected abstract addCheckConstraint(model: ModelClass, c: Extract<ConstraintSpec, { type: 'check' }>): Promise<void>
-  protected abstract removeCheckConstraint(model: ModelClass, c: Extract<ConstraintSpec, { type: 'check' }>): Promise<void>
+  protected abstract addCheckConstraint(
+    model: ModelClass,
+    c: Extract<ConstraintSpec, { type: 'check' }>,
+  ): Promise<void>
+  protected abstract removeCheckConstraint(
+    model: ModelClass,
+    c: Extract<ConstraintSpec, { type: 'check' }>,
+  ): Promise<void>
 
   async alterDbTable(_model: ModelClass, oldTable: string, newTable: string): Promise<void> {
     if (oldTable === newTable) return
@@ -241,13 +254,19 @@ export abstract class BaseSchemaEditor {
   // Field-level operations are implemented by the migrations package (AddField/AlterField/RenameField and the
   // SQLite table rebuild). The hooks are declared here so the dialect editors have a single place to extend.
   async addField(model: ModelClass, field: Field<any, any>): Promise<void> {
-    throw new NotSupportedError(`addField(${model._meta.objectName}.${field.name}) is not implemented by this schema editor yet.`)
+    throw new NotSupportedError(
+      `addField(${model._meta.objectName}.${field.name}) is not implemented by this schema editor yet.`,
+    )
   }
   async removeField(model: ModelClass, field: Field<any, any>): Promise<void> {
-    throw new NotSupportedError(`removeField(${model._meta.objectName}.${field.name}) is not implemented by this schema editor yet.`)
+    throw new NotSupportedError(
+      `removeField(${model._meta.objectName}.${field.name}) is not implemented by this schema editor yet.`,
+    )
   }
   async alterField(model: ModelClass, oldField: Field<any, any>, _newField: Field<any, any>): Promise<void> {
-    throw new NotSupportedError(`alterField(${model._meta.objectName}.${oldField.name}) is not implemented by this schema editor yet.`)
+    throw new NotSupportedError(
+      `alterField(${model._meta.objectName}.${oldField.name}) is not implemented by this schema editor yet.`,
+    )
   }
 
   // ---- introspection ----------------------------------------------------------------------------

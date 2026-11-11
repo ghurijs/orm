@@ -12,7 +12,10 @@ export interface QueryEvent {
 }
 type QueryListener = (e: QueryEvent) => void
 
-const listeners: Set<QueryListener> = globalSingleton('ghuri.orm.queryListeners', () => new Set<QueryListener>())
+const listeners: Set<QueryListener> = globalSingleton(
+  'ghuri.orm.queryListeners',
+  () => new Set<QueryListener>(),
+)
 
 /** Observe every executed statement (tests use it to count queries). Returns an unsubscribe function. */
 export function onQuery(listener: QueryListener): () => void {

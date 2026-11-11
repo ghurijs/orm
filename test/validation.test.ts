@@ -25,7 +25,9 @@ describe.each(backends)('fullClean (%s)', (backend) => {
     expect(errors.status).toEqual(['Value "nope" is not a valid choice.'])
     expect(errors.views).toEqual(['Ensure this value is greater than or equal to 0.'])
     const long = new Tag({ name: 'x'.repeat(51) })
-    expect((await errorsOf(() => long.fullClean())).name).toEqual(['Ensure this value has at most 50 characters (it has 51).'])
+    expect((await errorsOf(() => long.fullClean())).name).toEqual([
+      'Ensure this value has at most 50 characters (it has 51).',
+    ])
     const bad = new Author({ name: 'x', email: 'not-an-email', age: 'abc' as any })
     const e2 = await errorsOf(() => bad.fullClean())
     expect(e2.email).toEqual(['Enter a valid email address.'])
@@ -53,13 +55,19 @@ describe.each(backends)('fullClean (%s)', (backend) => {
     await expect(tag.fullClean({ validateUnique: false })).resolves.toBeUndefined()
     const profile = await Profile.objects.create({ author: ann })
     const second = new Profile({ author: ann })
-    expect((await errorsOf(() => second.fullClean())).author).toEqual(['Profile with this Author already exists.'])
+    expect((await errorsOf(() => second.fullClean())).author).toEqual([
+      'Profile with this Author already exists.',
+    ])
     await expect(profile.fullClean()).resolves.toBeUndefined()
   })
 
   it('clean() hook errors are collected', async () => {
-    expect(await errorsOf(() => new Owner({ name: 'forbidden' }).fullClean())).toEqual({ __all__: ['Forbidden name.'] })
-    expect(await errorsOf(() => new Owner({ name: 'bad-field' }).fullClean())).toEqual({ name: ['Bad name.'] })
+    expect(await errorsOf(() => new Owner({ name: 'forbidden' }).fullClean())).toEqual({
+      __all__: ['Forbidden name.'],
+    })
+    expect(await errorsOf(() => new Owner({ name: 'bad-field' }).fullClean())).toEqual({
+      name: ['Bad name.'],
+    })
     await expect(new Owner({ name: 'fine' }).fullClean()).resolves.toBeUndefined()
   })
 })

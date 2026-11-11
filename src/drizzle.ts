@@ -1,5 +1,16 @@
-import { bigint as pgBigint, customType as pgCustomType, integer as pgInteger, jsonb, pgTable, smallint as pgSmallint } from 'drizzle-orm/pg-core'
-import { customType as sqliteCustomType, integer as sqliteInteger, sqliteTable } from 'drizzle-orm/sqlite-core'
+import {
+  jsonb,
+  bigint as pgBigint,
+  customType as pgCustomType,
+  integer as pgInteger,
+  smallint as pgSmallint,
+  pgTable,
+} from 'drizzle-orm/pg-core'
+import {
+  customType as sqliteCustomType,
+  integer as sqliteInteger,
+  sqliteTable,
+} from 'drizzle-orm/sqlite-core'
 import { type Field, setDrizzleColumnBuilder } from './fields/base'
 import { setTableBuilder } from './models/base'
 import type { ModelClass } from './models/types'

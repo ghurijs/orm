@@ -107,7 +107,8 @@ export function ident(...parts: string[]): Sql {
 export function literal(value: unknown, dialect: Dialect = 'sqlite'): string {
   if (value === null || value === undefined) return 'NULL'
   if (typeof value === 'number' || typeof value === 'bigint') return String(value)
-  if (typeof value === 'boolean') return dialect === 'postgresql' ? (value ? 'true' : 'false') : value ? '1' : '0'
+  if (typeof value === 'boolean')
+    return dialect === 'postgresql' ? (value ? 'true' : 'false') : value ? '1' : '0'
   if (value instanceof Date) return `'${value.toISOString()}'`
   if (typeof value === 'object') return `'${JSON.stringify(value).replace(/'/g, "''")}'`
   return `'${String(value).replace(/'/g, "''")}'`

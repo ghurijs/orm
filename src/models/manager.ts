@@ -84,7 +84,10 @@ export class Manager<T = any> {
   create(data?: CreateData<T>): Promise<T> {
     return this.getQueryset().create(data)
   }
-  getOrCreate(lookup: FilterArg<T> & Record<string, unknown>, opts?: { defaults?: CreateData<T> }): Promise<[T, boolean]> {
+  getOrCreate(
+    lookup: FilterArg<T> & Record<string, unknown>,
+    opts?: { defaults?: CreateData<T> },
+  ): Promise<[T, boolean]> {
     return this.getQueryset().getOrCreate(lookup, opts)
   }
   updateOrCreate(

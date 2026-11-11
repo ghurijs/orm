@@ -1,5 +1,12 @@
 import { apps, ImproperlyConfigured } from '@ghuri/core'
-import { CASCADE, ForeignKey, ManyToManyField, type RelatedField, RelatedObject, setRelationResolver } from '../fields/related'
+import {
+  CASCADE,
+  ForeignKey,
+  ManyToManyField,
+  type RelatedField,
+  RelatedObject,
+  setRelationResolver,
+} from '../fields/related'
 import { globalSingleton, lowerFirst } from '../utils'
 import { createModelClass, registerModels } from './base'
 import { installReverseDescriptor } from './descriptors'
@@ -15,7 +22,8 @@ function resolveTarget(field: RelatedField<any, any>, to: unknown): ModelClass {
   if (isModelClass(to)) return to
   if (typeof to === 'function') {
     const r = (to as () => unknown)()
-    if (!isModelClass(r)) throw new TypeError(`Relation target of ${String(field)} did not return a model class.`)
+    if (!isModelClass(r))
+      throw new TypeError(`Relation target of ${String(field)} did not return a model class.`)
     return r
   }
   throw new TypeError(`Invalid relation target for ${String(field)}.`)
@@ -38,8 +46,16 @@ function createAutoThrough(field: ManyToManyField, target: ModelClass): ModelCla
     verboseNamePlural: `${srcMeta.objectName}-${tgtMeta.objectName} relationships`,
   }
   const fields = {
-    [fromName]: new ForeignKey(src, { onDelete: CASCADE, relatedName: `${name}+`, dbConstraint: field.dbConstraint }),
-    [toName]: new ForeignKey(target, { onDelete: CASCADE, relatedName: `${name}+`, dbConstraint: field.dbConstraint }),
+    [fromName]: new ForeignKey(src, {
+      onDelete: CASCADE,
+      relatedName: `${name}+`,
+      dbConstraint: field.dbConstraint,
+    }),
+    [toName]: new ForeignKey(target, {
+      onDelete: CASCADE,
+      relatedName: `${name}+`,
+      dbConstraint: field.dbConstraint,
+    }),
   }
   const through = createModelClass(name, fields, { meta, registry: srcMeta.registry })
   void through._meta
@@ -57,10 +73,17 @@ function finalizeRelation(field: RelatedField<any, any>, target: ModelClass): vo
     )
   }
   if (field instanceof ManyToManyField && !field.throughModel) {
-    field.throughModel = field.options.through !== undefined ? resolveTarget(field, field.options.through) : createAutoThrough(field, target)
+    field.throughModel =
+      field.options.through !== undefined
+        ? resolveTarget(field, field.options.through)
+        : createAutoThrough(field, target)
     void field.throughModel._meta
     const srcMeta = field.model._meta
-    if (srcMeta.hasAppLabel && srcMeta.registry.getModels(srcMeta.appLabel).includes(field.model) && field.throughModel._meta.autoCreated) {
+    if (
+      srcMeta.hasAppLabel &&
+      srcMeta.registry.getModels(srcMeta.appLabel).includes(field.model) &&
+      field.throughModel._meta.autoCreated
+    ) {
       srcMeta.registry.register(srcMeta.appLabel, field.throughModel)
     }
   }

@@ -1,7 +1,7 @@
 import { ImproperlyConfigured } from '@ghuri/core'
-import type { Field } from '../fields/base'
-import { ManyToManyField, RelatedObject } from '../fields/related'
 import { FieldDoesNotExist } from '../errors'
+import type { Field } from '../fields/base'
+import { ManyToManyField, type RelatedObject } from '../fields/related'
 import { capfirst, humanize } from '../utils'
 import type { Manager } from './manager'
 import { type ModelRegistry, modelRegistry } from './registry'
@@ -55,7 +55,9 @@ export class Options {
   // ---- identity ---------------------------------------------------------------------------------
 
   get appLabel(): string {
-    const label = this._appLabel ?? (this.meta.appLabel !== undefined ? lazy(this.meta.appLabel as Lazy<string>) : undefined)
+    const label =
+      this._appLabel ??
+      (this.meta.appLabel !== undefined ? lazy(this.meta.appLabel as Lazy<string>) : undefined)
     if (!label) {
       throw new ImproperlyConfigured(
         `Model ${this.objectName} doesn't declare an explicit appLabel and isn't in an application in INSTALLED_APPS ` +
@@ -175,7 +177,8 @@ export class Options {
     if (field instanceof ManyToManyField) this.localManyToMany.push(field)
     else {
       if (field.primaryKey) {
-        if (this.pk) throw new ImproperlyConfigured(`Model ${this.objectName} can't have more than one primary key.`)
+        if (this.pk)
+          throw new ImproperlyConfigured(`Model ${this.objectName} can't have more than one primary key.`)
         this.pk = field
         this.localFields.unshift(field)
       } else this.localFields.push(field)
@@ -226,7 +229,9 @@ export class Options {
     this.registry.resolvePending()
     return [
       ...this.forwardFields.map((f) => f.name),
-      ...this._relatedObjects.filter((r) => !r.field.reverseHidden && !r.relatedModel._meta.autoCreated).map((r) => r.name),
+      ...this._relatedObjects
+        .filter((r) => !r.field.reverseHidden && !r.relatedModel._meta.autoCreated)
+        .map((r) => r.name),
       'pk',
     ].sort()
   }

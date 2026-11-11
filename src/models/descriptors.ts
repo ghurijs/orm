@@ -31,7 +31,12 @@ export class RelatedRef<T> implements PromiseLike<T> {
 }
 
 function isInstance(v: unknown): v is BaseModel {
-  return !!v && typeof v === 'object' && '_state' in (v as object) && typeof (v as any).constructor?._meta === 'object'
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    '_state' in (v as object) &&
+    typeof (v as any).constructor?._meta === 'object'
+  )
 }
 
 function sameOrSubclass(cls: unknown, target: ModelClass): boolean {
@@ -61,7 +66,8 @@ function defineAccessor(proto: object, name: string, desc: PropertyDescriptor, o
 export function installForwardDescriptors(cls: ModelClass, opts: Options): void {
   const proto = cls.prototype
   for (const f of opts.localFields) {
-    if (f instanceof ForeignKey) defineAccessor(proto, f.name, forwardDescriptor(f), `${opts.objectName}.${f.name}`)
+    if (f instanceof ForeignKey)
+      defineAccessor(proto, f.name, forwardDescriptor(f), `${opts.objectName}.${f.name}`)
   }
   for (const m of opts.localManyToMany) {
     defineAccessor(
@@ -72,7 +78,9 @@ export function installForwardDescriptors(cls: ModelClass, opts: Options): void 
           return new ManyRelatedManager(this, m, false)
         },
         set() {
-          throw new TypeError(`Direct assignment to the forward side of a many-to-many set is prohibited. Use ${m.name}.set() instead.`)
+          throw new TypeError(
+            `Direct assignment to the forward side of a many-to-many set is prohibited. Use ${m.name}.set() instead.`,
+          )
         },
       },
       `${opts.objectName}.${m.name}`,
@@ -91,7 +99,11 @@ function forwardDescriptor(f: ForeignKey): PropertyDescriptor {
           if (id === null || id === undefined) return null
         } else {
           const cachedId = (cached as any)[f.targetField.attname]
-          if (cachedId === id || ((id === null || id === undefined) && (cachedId === null || cachedId === undefined))) return cached
+          if (
+            cachedId === id ||
+            ((id === null || id === undefined) && (cachedId === null || cachedId === undefined))
+          )
+            return cached
         }
         state.fieldsCache.delete(f.name)
       }
@@ -99,7 +111,9 @@ function forwardDescriptor(f: ForeignKey): PropertyDescriptor {
         if (f.null) return null
         const target = f.relatedModel
         return new RelatedRef(() =>
-          Promise.reject(new target.DoesNotExist(`${(this.constructor as ModelClass)._meta.objectName} has no ${f.name}.`)),
+          Promise.reject(
+            new target.DoesNotExist(`${(this.constructor as ModelClass)._meta.objectName} has no ${f.name}.`),
+          ),
         )
       }
       return new RelatedRef(async () => {
@@ -165,7 +179,9 @@ export function installReverseDescriptor(target: ModelClass, rel: RelatedObject)
           return new ManyRelatedManager(this, rel.field as ManyToManyField, true)
         },
         set() {
-          throw new TypeError(`Direct assignment to the reverse side of a many-to-many set is prohibited. Use ${accessor}.set() instead.`)
+          throw new TypeError(
+            `Direct assignment to the reverse side of a many-to-many set is prohibited. Use ${accessor}.set() instead.`,
+          )
         },
       },
       owner,
@@ -184,7 +200,9 @@ export function installReverseDescriptor(target: ModelClass, rel: RelatedObject)
             const cached = state.fieldsCache.get(accessor) as BaseModel | null
             if (cached) return cached
             return new RelatedRef(() =>
-              Promise.reject(new rel.relatedModel.DoesNotExist(`${targetMeta.objectName} has no ${accessor}.`)),
+              Promise.reject(
+                new rel.relatedModel.DoesNotExist(`${targetMeta.objectName} has no ${accessor}.`),
+              ),
             )
           }
           const value = (this as any)[fk.targetField.attname]
@@ -226,7 +244,9 @@ export function installReverseDescriptor(target: ModelClass, rel: RelatedObject)
         return new RelatedManager(this, rel)
       },
       set() {
-        throw new TypeError(`Direct assignment to the reverse side of a related set is prohibited. Use ${accessor}.set() instead.`)
+        throw new TypeError(
+          `Direct assignment to the reverse side of a related set is prohibited. Use ${accessor}.set() instead.`,
+        )
       },
     },
     owner,

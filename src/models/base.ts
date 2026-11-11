@@ -1,17 +1,18 @@
 import {
-  ImproperlyConfigured,
   MultipleObjectsReturned as CoreMultipleObjectsReturned,
+  ImproperlyConfigured,
   ObjectDoesNotExist,
   ValidationError,
 } from '@ghuri/core'
 import { connections, DEFAULT_DB_ALIAS } from '../db/connections'
 import { DatabaseError } from '../errors'
 import { type Field, isEmptyValue } from '../fields/base'
-import { ForeignKey, invalidRelatedError, ManyToManyField, RelatedField } from '../fields/related'
+import { ForeignKey, invalidRelatedError, type ManyToManyField, RelatedField } from '../fields/related'
 import { BigAutoField } from '../fields/scalar'
 import { type Dialect, ident, Sql } from '../query/sql'
 import { postSave, preSave } from '../signals'
 import { capfirst } from '../utils'
+import { Collector } from './deletion'
 import { installForwardDescriptors } from './descriptors'
 import { Manager } from './manager'
 import { Options } from './options'
@@ -63,8 +64,12 @@ export class BaseModel {
   declare static _baseManager: Manager<any>
   declare static fields: FieldMap
   declare static Meta?: ModelMeta
-  declare static DoesNotExist: new (message?: string) => ObjectDoesNotExist
-  declare static MultipleObjectsReturned: new (message?: string) => CoreMultipleObjectsReturned
+  declare static DoesNotExist: new (
+    message?: string,
+  ) => ObjectDoesNotExist
+  declare static MultipleObjectsReturned: new (
+    message?: string,
+  ) => CoreMultipleObjectsReturned
 
   declare _state: ModelState
   /** Primary key value (alias of the pk attribute, e.g. `id`). */
@@ -74,18 +79,31 @@ export class BaseModel {
     const cls = new.target as unknown as ModelClass
     const meta = cls._meta
     if (meta.abstract) throw new TypeError(`Abstract model '${meta.objectName}' cannot be instantiated.`)
-    Object.defineProperty(this, '_state', { value: newState(), enumerable: false, writable: true, configurable: true })
+    Object.defineProperty(this, '_state', {
+      value: newState(),
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    })
     if ((data as unknown) === FROM_DB) return
     initInstance(this, meta, data ?? {})
   }
 
   /** Generated drizzle table for this model (escape hatch). */
   static table(dialect?: Dialect): any {
+    // biome-ignore lint/complexity/noThisInStatic: polymorphic — `this` is the concrete model class
     return tableHook(this as unknown as ModelClass, dialect ?? connections.dialect())
   }
 
   /** Build an instance from a raw row keyed by column names (or attnames). */
-  static fromRow<T extends BaseModel>(this: new (data?: any) => T, row: Record<string, unknown>, dialect?: Dialect): T {
+  static fromRow<T extends BaseModel>(
+    this: new (
+      data?: any,
+    ) => T,
+    row: Record<string, unknown>,
+    dialect?: Dialect,
+  ): T {
+    // biome-ignore lint/complexity/noThisInStatic: polymorphic — `this` is the concrete model class
     const cls = this as unknown as ModelClass
     const d = dialect ?? connections.dialect()
     const values: Record<string, unknown> = {}
@@ -100,6 +118,7 @@ export class BaseModel {
 
   /** @internal Build an instance from converted values. */
   static _fromDb(values: Record<string, unknown>, deferred: string[], using: string | undefined): BaseModel {
+    // biome-ignore lint/complexity/noThisInStatic: polymorphic — `this` is the concrete model class
     const obj = new (this as any)(FROM_DB) as BaseModel
     for (const k in values) (obj as any)[k] = values[k]
     obj._state.adding = false
@@ -121,7 +140,9 @@ export class BaseModel {
       if (!rel) continue
       const v = (rel as any)[f.targetField.attname]
       if (v === null || v === undefined) {
-        throw new TypeError(`save() prohibited to prevent data loss due to unsaved related object '${f.name}'.`)
+        throw new TypeError(
+          `save() prohibited to prevent data loss due to unsaved related object '${f.name}'.`,
+        )
       }
       if ((this as any)[f.attname] !== v) (this as any)[f.attname] = v
     }
@@ -130,7 +151,8 @@ export class BaseModel {
       if (opts.updateFields.length === 0) return
       updateFields = opts.updateFields.map((n) => {
         const f = meta.getForwardField(n)
-        if (!f || !f.concrete) throw new TypeError(`The following fields do not exist in this model or are m2m fields: ${n}`)
+        if (!f?.concrete)
+          throw new TypeError(`The following fields do not exist in this model or are m2m fields: ${n}`)
         return f
       })
     } else if (!state.adding && state.deferred.size) {
@@ -152,7 +174,10 @@ export class BaseModel {
       if (fields.length) {
         const sets = fields.map((f) => {
           const v = f.preSave(this, false)
-          return new Sql().append(ident(f.column)).append(' = ').append(v === null || v === undefined ? Sql.raw('NULL') : f.dbParam(v, d))
+          return new Sql()
+            .append(ident(f.column))
+            .append(' = ')
+            .append(v === null || v === undefined ? Sql.raw('NULL') : f.dbParam(v, d))
         })
         const q = new Sql(['UPDATE '])
           .append(ident(meta.dbTable))
@@ -166,12 +191,21 @@ export class BaseModel {
         const res = await conn.execute(sql, params)
         updated = (res.rowsAffected ?? 0) > 0
       } else {
-        const q = new Sql(['SELECT 1 AS "x" FROM ']).append(ident(meta.dbTable)).append(' WHERE ').append(ident(pkField.column)).append(' = ').append(pkField.dbParam(pkVal, d))
+        const q = new Sql(['SELECT 1 AS "x" FROM '])
+          .append(ident(meta.dbTable))
+          .append(' WHERE ')
+          .append(ident(pkField.column))
+          .append(' = ')
+          .append(pkField.dbParam(pkVal, d))
         const { sql, params } = q.render(d)
         updated = (await conn.execute(sql, params)).rows.length > 0
       }
       if (!updated && (updateFields || opts.forceUpdate)) {
-        throw new DatabaseError(updateFields ? 'Save with updateFields did not affect any rows.' : 'Forced update did not affect any rows.')
+        throw new DatabaseError(
+          updateFields
+            ? 'Save with updateFields did not affect any rows.'
+            : 'Forced update did not affect any rows.',
+        )
       }
     }
     if (!updated) {
@@ -185,14 +219,17 @@ export class BaseModel {
         vals.push(v === null || v === undefined ? Sql.raw('NULL') : f.dbParam(v, d))
       }
       const q = new Sql(['INSERT INTO ']).append(ident(meta.dbTable))
-      if (cols.length) q.append(' (').append(Sql.join(cols)).append(') VALUES (').append(Sql.join(vals)).append(')')
+      if (cols.length)
+        q.append(' (').append(Sql.join(cols)).append(') VALUES (').append(Sql.join(vals)).append(')')
       else q.append(' DEFAULT VALUES')
       q.append(' RETURNING ').append(ident(pkField.column))
       const { sql, params } = q.render(d)
       const res = await conn.execute(sql, params)
       const row = res.rows[0]
-      if (row && row[pkField.column] !== undefined) (this as any)[pkField.attname] = pkField.fromDb(row[pkField.column], d)
-      else if (!pkSet && res.lastInsertId !== undefined) (this as any)[pkField.attname] = pkField.fromDb(res.lastInsertId, d)
+      if (row && row[pkField.column] !== undefined)
+        (this as any)[pkField.attname] = pkField.fromDb(row[pkField.column], d)
+      else if (!pkSet && res.lastInsertId !== undefined)
+        (this as any)[pkField.attname] = pkField.fromDb(res.lastInsertId, d)
       created = true
     }
     state.adding = false
@@ -202,12 +239,15 @@ export class BaseModel {
   }
 
   /** Delete this object and emulate `onDelete` for related objects. Returns `[total, { label: n }]`. */
-  async delete(opts: { using?: string; keepParents?: boolean } = {}): Promise<[number, Record<string, number>]> {
+  async delete(
+    opts: { using?: string; keepParents?: boolean } = {},
+  ): Promise<[number, Record<string, number>]> {
     const meta = (this.constructor as ModelClass)._meta
     if (this.pk === null || this.pk === undefined) {
-      throw new TypeError(`${meta.objectName} object can't be deleted because its ${meta.pk.attname} attribute is set to null.`)
+      throw new TypeError(
+        `${meta.objectName} object can't be deleted because its ${meta.pk.attname} attribute is set to null.`,
+      )
     }
-    const { Collector } = await import('./deletion')
     const collector = new Collector(opts.using ?? this._state.db ?? DEFAULT_DB_ALIAS)
     await collector.collect([this])
     return collector.delete()
@@ -266,7 +306,8 @@ export class BaseModel {
     const meta = cls._meta
     const errors: Record<string, string[]> = {}
     const checks: string[][] = []
-    for (const f of meta.concreteFields) if (f.unique && !(f.isAutoField && (this as any)[f.attname] == null)) checks.push([f.name])
+    for (const f of meta.concreteFields)
+      if (f.unique && !(f.isAutoField && (this as any)[f.attname] == null)) checks.push([f.name])
     for (const ut of meta.uniqueTogether) checks.push(ut)
     for (const c of meta.constraints) if (c.type === 'unique' && !c.condition) checks.push(c.fields)
     for (const names of checks) {
@@ -290,10 +331,13 @@ export class BaseModel {
         const modelName = capfirst(meta.verboseName)
         if (fields.length === 1) {
           const f = fields[0]
-          ;(errors[f.name] ??= []).push(`${modelName} with this ${capfirst(f.verboseName)} already exists.`)
+          errors[f.name] = [
+            ...(errors[f.name] ?? []),
+            `${modelName} with this ${capfirst(f.verboseName)} already exists.`,
+          ]
         } else {
           const labels = fields.map((f) => capfirst(f.verboseName)).join(' and ')
-          ;(errors.__all__ ??= []).push(`${modelName} with this ${labels} already exists.`)
+          errors.__all__ = [...(errors.__all__ ?? []), `${modelName} with this ${labels} already exists.`]
         }
       }
     }
@@ -381,7 +425,8 @@ export class BaseModel {
   /** Same model and same (non-null) pk. */
   isEqual(other: unknown): boolean {
     if (!(other instanceof BaseModel)) return false
-    if ((other.constructor as ModelClass)._meta.label !== (this.constructor as ModelClass)._meta.label) return false
+    if ((other.constructor as ModelClass)._meta.label !== (this.constructor as ModelClass)._meta.label)
+      return false
     return this.pk !== null && this.pk !== undefined && this.pk === other.pk
   }
 
@@ -415,7 +460,9 @@ function initInstance(obj: BaseModel, meta: Options, data: Record<string, unknow
     }
     const m2m = meta.localManyToMany.find((f) => f.name === key)
     if (m2m) {
-      throw new TypeError(`Direct assignment to the forward side of a many-to-many set is prohibited. Use ${key}.set() instead.`)
+      throw new TypeError(
+        `Direct assignment to the forward side of a many-to-many set is prohibited. Use ${key}.set() instead.`,
+      )
     }
     if (hasSetter(obj, key)) o[key] = data[key]
     else throw new TypeError(`${meta.objectName}() got an unexpected keyword argument '${key}'`)
@@ -462,13 +509,17 @@ function collectMeta(cls: Function): ModelMeta {
   const chain = ancestry(cls)
   for (const c of chain) {
     const own = c === cls
-    const factoryMeta = Object.hasOwn(c, FACTORY_META) ? ((c as any)[FACTORY_META] as ModelMeta | undefined) : undefined
+    const factoryMeta = Object.hasOwn(c, FACTORY_META)
+      ? ((c as any)[FACTORY_META] as ModelMeta | undefined)
+      : undefined
     const direct = Object.getPrototypeOf(cls) === c
     if (factoryMeta) {
-      for (const [k, v] of Object.entries(factoryMeta)) if (direct || !NON_INHERITED_META.has(k)) merged[k] = v
+      for (const [k, v] of Object.entries(factoryMeta))
+        if (direct || !NON_INHERITED_META.has(k)) merged[k] = v
     }
     if (Object.hasOwn(c, 'Meta') && (c as any).Meta) {
-      for (const [k, v] of Object.entries((c as any).Meta as ModelMeta)) if (own || !NON_INHERITED_META.has(k)) merged[k] = v
+      for (const [k, v] of Object.entries((c as any).Meta as ModelMeta))
+        if (own || !NON_INHERITED_META.has(k)) merged[k] = v
     }
   }
   return merged
@@ -494,7 +545,9 @@ function prepareModel(cls: ModelClass): Options {
   const hasPk = Object.values(defs).some((f) => f.primaryKey)
   if (!hasPk) {
     if ('id' in defs) {
-      throw new ImproperlyConfigured(`'id' can only be used as a field name if the field also sets 'primaryKey: true' (${opts.objectName}).`)
+      throw new ImproperlyConfigured(
+        `'id' can only be used as a field name if the field also sets 'primaryKey: true' (${opts.objectName}).`,
+      )
     }
     const id = new BigAutoField({ primaryKey: true })
     id.autoCreated = true
@@ -503,7 +556,10 @@ function prepareModel(cls: ModelClass): Options {
   }
   const entries = Object.entries(defs)
   for (const [name, def] of entries) {
-    if (name === 'pk') throw new ImproperlyConfigured(`'pk' is a reserved word that cannot be used as a field name (${opts.objectName}).`)
+    if (name === 'pk')
+      throw new ImproperlyConfigured(
+        `'pk' is a reserved word that cannot be used as a field name (${opts.objectName}).`,
+      )
     const f = def.clone()
     f.contributeToClass(cls, name)
     opts.addField(f)
@@ -511,7 +567,8 @@ function prepareModel(cls: ModelClass): Options {
   installForwardDescriptors(cls, opts)
   bindManagers(cls, opts)
   registry.all.add(cls)
-  for (const f of [...opts.localFields, ...opts.localManyToMany]) if (f instanceof RelatedField) registry.pending.add(f)
+  for (const f of [...opts.localFields, ...opts.localManyToMany])
+    if (f instanceof RelatedField) registry.pending.add(f)
   const label = meta.appLabel
   if (typeof label === 'string' && !meta.autoCreated) registry.register(label, cls)
   else registry.resolvePending()
@@ -549,7 +606,8 @@ function getOptions(cls: ModelClass): Options {
 
 Object.defineProperty(BaseModel, '_meta', {
   get(this: ModelClass) {
-    if (this === (BaseModel as unknown)) throw new TypeError('BaseModel has no _meta; define models with Model({...}).')
+    if (this === (BaseModel as unknown))
+      throw new TypeError('BaseModel has no _meta; define models with Model({...}).')
     return getOptions(this)
   },
   configurable: true,
@@ -606,7 +664,11 @@ function errorClassGetter(key: symbol, base: new (msg?: string) => Error, name: 
       if (!Object.hasOwn(this, key)) {
         const parent = Object.getPrototypeOf(this)
         const parentErr =
-          parent && parent !== BaseModel && typeof parent === 'function' && (parent as any)[MODEL_MARKER] && !Object.hasOwn(parent, FACTORY_BASE)
+          parent &&
+          parent !== BaseModel &&
+          typeof parent === 'function' &&
+          (parent as any)[MODEL_MARKER] &&
+          !Object.hasOwn(parent, FACTORY_BASE)
             ? (parent as any)[name]
             : base
         const cls = class extends (parentErr as new (msg?: string) => Error) {}
@@ -619,7 +681,11 @@ function errorClassGetter(key: symbol, base: new (msg?: string) => Error, name: 
   }
 }
 Object.defineProperty(BaseModel, 'DoesNotExist', errorClassGetter(DNE, ObjectDoesNotExist, 'DoesNotExist'))
-Object.defineProperty(BaseModel, 'MultipleObjectsReturned', errorClassGetter(MOR, CoreMultipleObjectsReturned, 'MultipleObjectsReturned'))
+Object.defineProperty(
+  BaseModel,
+  'MultipleObjectsReturned',
+  errorClassGetter(MOR, CoreMultipleObjectsReturned, 'MultipleObjectsReturned'),
+)
 ;(BaseModel as any).fields = {}
 
 // drizzle.ts installs the table builder.
@@ -633,11 +699,25 @@ export function setTableBuilder(fn: (model: ModelClass, dialect: Dialect) => any
 // ---- Model() factory & typing ---------------------------------------------------------------------
 
 type AnyCtor = abstract new (...args: any) => any
-type FieldValue<F> = F extends { __value: infer T; __options: infer O } ? (O extends { null: true } ? T | null : T) : never
+type FieldValue<F> = F extends { __value: infer T; __options: infer O }
+  ? O extends { null: true }
+    ? T | null
+    : T
+  : never
 type IsNull<F> = F extends { __options: infer O } ? (O extends { null: true } ? true : false) : false
-type TargetOf<F> = F extends { __target: infer M } ? (M extends abstract new (...a: any) => infer I ? I : BaseModel) : BaseModel
+type TargetOf<F> = F extends { __target: infer M }
+  ? M extends abstract new (
+      ...a: any
+    ) => infer I
+    ? I
+    : BaseModel
+  : BaseModel
 type PkFromFields<FF> = {
-  [K in keyof FF]: FF[K] extends { __value: infer T; __options: infer O } ? (O extends { primaryKey: true } ? T : never) : never
+  [K in keyof FF]: FF[K] extends { __value: infer T; __options: infer O }
+    ? O extends { primaryKey: true }
+      ? T
+      : never
+    : never
 }[keyof FF]
 /** Primary key type of a FK target, read from the target's static field map (number for implicit ids). */
 type TargetPk<F> = F extends { __target: infer M }
@@ -651,26 +731,36 @@ type FKKeys<F> = { [K in keyof F]: F[K] extends ForeignKey<any, any> ? K : never
 type M2MKeys<F> = { [K in keyof F]: F[K] extends ManyToManyField<any, any> ? K : never }[keyof F]
 type PlainKeys<F> = Exclude<keyof F, FKKeys<F> | M2MKeys<F>>
 type HasPk<F> = true extends {
-  [K in keyof F]: F[K] extends { __options: infer O } ? (O extends { primaryKey: true } ? true : false) : false
+  [K in keyof F]: F[K] extends { __options: infer O }
+    ? O extends { primaryKey: true }
+      ? true
+      : false
+    : false
 }[keyof F]
   ? true
   : false
 
 /** Awaitable related object: `await post.author` (also assignable: `post.author = user`). */
-export type Related<I, N extends boolean = false> = N extends true ? I | null | PromiseLike<I | null> : I | PromiseLike<I>
+export type Related<I, N extends boolean = false> = N extends true
+  ? I | null | PromiseLike<I | null>
+  : I | PromiseLike<I>
 
 /** Instance properties inferred from a field map. */
 export type ModelFields<F> = { -readonly [K in PlainKeys<F>]: FieldValue<F[K]> } & {
   -readonly [K in FKKeys<F>]: Related<TargetOf<F[K]>, IsNull<F[K]>>
 } & {
-  -readonly [K in FKKeys<F> as `${K & string}Id`]: IsNull<F[K]> extends true ? TargetPk<F[K]> | null : TargetPk<F[K]>
+  -readonly [K in FKKeys<F> as `${K & string}Id`]: IsNull<F[K]> extends true
+    ? TargetPk<F[K]> | null
+    : TargetPk<F[K]>
 } & {
   readonly [K in M2MKeys<F>]: import('./related-managers').ManyRelatedManager<TargetOf<F[K]>>
 } & (HasPk<F> extends true ? {} : { id: number })
 
 /** Constructor / `create()` data inferred from a field map. */
 export type ModelInit<F> = {
-  [K in PlainKeys<F>]?: FieldValue<F[K]> | (F[K] extends { __value: infer T } ? T | string | number | null : never)
+  [K in PlainKeys<F>]?:
+    | FieldValue<F[K]>
+    | (F[K] extends { __value: infer T } ? T | string | number | null : never)
 } & {
   [K in FKKeys<F>]?: BaseModel | TargetPk<F[K]> | null
 } & {
@@ -683,7 +773,8 @@ export type ModelBaseClass<F extends FieldMap, B extends AnyCtor> = {
   new (data?: ModelInit<F & FieldsOf<B>> & Record<string, unknown>): InstanceType<B> & ModelFields<F>
   fields: FieldsOf<B> & F
   objects: Manager<InstanceType<B> & ModelFields<F>>
-} & Omit<B, 'prototype' | 'fields' | 'objects'>
+  Meta?: ModelMeta
+} & Omit<B, 'prototype' | 'fields' | 'objects' | 'Meta'>
 
 export interface ModelFactoryOptions<B> {
   /** Abstract model to inherit fields, Meta and methods from. */
@@ -706,11 +797,17 @@ export function Model<F extends FieldMap, B extends AnyCtor = typeof BaseModel>(
   options: ModelFactoryOptions<B> = {},
 ): ModelBaseClass<F, B> {
   const Base = (options.extends ?? BaseModel) as unknown as typeof BaseModel
-  if (options.extends && !(Base as any)[MODEL_MARKER]) throw new TypeError('Model({...}, { extends }) needs a model class.')
+  if (options.extends && !(Base as any)[MODEL_MARKER])
+    throw new TypeError('Model({...}, { extends }) needs a model class.')
   const merged: FieldMap = { ...(((Base as any).fields as FieldMap | undefined) ?? {}), ...fields }
   const ModelBase = class extends Base {}
   Object.defineProperty(ModelBase, 'name', { value: 'ModelBase' })
-  Object.defineProperty(ModelBase, 'fields', { value: merged, writable: true, configurable: true, enumerable: true })
+  Object.defineProperty(ModelBase, 'fields', {
+    value: merged,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  })
   Object.defineProperty(ModelBase, FACTORY_BASE, { value: true })
   Object.defineProperty(ModelBase, FACTORY_META, { value: options.meta })
   return ModelBase as any
@@ -728,7 +825,12 @@ export function createModelClass(
   const Base = opts.base ?? BaseModel
   const cls = class extends Base {}
   Object.defineProperty(cls, 'name', { value: name })
-  Object.defineProperty(cls, 'fields', { value: { ...fields }, writable: true, configurable: true, enumerable: true })
+  Object.defineProperty(cls, 'fields', {
+    value: { ...fields },
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  })
   const meta: ModelMeta = { ...(opts.meta ?? {}) }
   if (opts.appLabel && meta.appLabel === undefined) meta.appLabel = opts.appLabel
   Object.defineProperty(cls, 'Meta', { value: meta, writable: true, configurable: true, enumerable: true })

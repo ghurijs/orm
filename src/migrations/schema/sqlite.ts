@@ -32,16 +32,28 @@ export class SqliteSchemaEditor extends BaseSchemaEditor {
     return `DROP INDEX ${this.quoteName(name)}`
   }
 
-  protected async addCheckConstraint(model: ModelClass, c: Extract<ConstraintSpec, { type: 'check' }>): Promise<void> {
-    throw new NotSupportedError(`Adding check constraint '${c.name}' to ${model._meta.objectName} requires a SQLite table rebuild.`)
+  protected async addCheckConstraint(
+    model: ModelClass,
+    c: Extract<ConstraintSpec, { type: 'check' }>,
+  ): Promise<void> {
+    throw new NotSupportedError(
+      `Adding check constraint '${c.name}' to ${model._meta.objectName} requires a SQLite table rebuild.`,
+    )
   }
 
-  protected async removeCheckConstraint(model: ModelClass, c: Extract<ConstraintSpec, { type: 'check' }>): Promise<void> {
-    throw new NotSupportedError(`Removing check constraint '${c.name}' from ${model._meta.objectName} requires a SQLite table rebuild.`)
+  protected async removeCheckConstraint(
+    model: ModelClass,
+    c: Extract<ConstraintSpec, { type: 'check' }>,
+  ): Promise<void> {
+    throw new NotSupportedError(
+      `Removing check constraint '${c.name}' from ${model._meta.objectName} requires a SQLite table rebuild.`,
+    )
   }
 
   async renameColumn(table: string, oldColumn: string, newColumn: string): Promise<void> {
-    await this.execute(`ALTER TABLE ${this.quoteName(table)} RENAME COLUMN ${this.quoteName(oldColumn)} TO ${this.quoteName(newColumn)}`)
+    await this.execute(
+      `ALTER TABLE ${this.quoteName(table)} RENAME COLUMN ${this.quoteName(oldColumn)} TO ${this.quoteName(newColumn)}`,
+    )
   }
 
   async tableNames(): Promise<string[]> {

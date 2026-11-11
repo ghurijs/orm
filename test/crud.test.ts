@@ -60,7 +60,9 @@ describe.each(backends)('CRUD (%s)', (backend) => {
   it('get() errors', async () => {
     await blogFixture()
     await expect(Author.objects.get({ name: 'Nobody' })).rejects.toBeInstanceOf(Author.DoesNotExist)
-    await expect(Author.objects.get({ name: 'Nobody' })).rejects.toThrow('Author matching query does not exist.')
+    await expect(Author.objects.get({ name: 'Nobody' })).rejects.toThrow(
+      'Author matching query does not exist.',
+    )
     await expect(Post.objects.get({ published: true })).rejects.toBeInstanceOf(Post.MultipleObjectsReturned)
     const { ObjectDoesNotExist } = await import('@ghuri/core')
     await expect(Author.objects.get({ name: 'Nobody' })).rejects.toBeInstanceOf(ObjectDoesNotExist)
@@ -134,8 +136,12 @@ describe.each(backends)('CRUD (%s)', (backend) => {
     ])
     const fk = await Post.objects.filter({ slug: 'draft' }).values('author', 'authorId')
     expect(fk[0].author).toBe(fk[0].authorId)
-    expect(await Post.objects.filter({ slug: 'draft' }).valuesList('publishDate__year', { flat: true })).toEqual([null])
-    expect(await Post.objects.filter({ slug: 'hello-ghuri' }).valuesList('publishDate__year', { flat: true })).toEqual([2024])
+    expect(
+      await Post.objects.filter({ slug: 'draft' }).valuesList('publishDate__year', { flat: true }),
+    ).toEqual([null])
+    expect(
+      await Post.objects.filter({ slug: 'hello-ghuri' }).valuesList('publishDate__year', { flat: true }),
+    ).toEqual([2024])
     expect(await Post.objects.orderBy('views').valuesList('views', { flat: true }).get({ views: 3 })).toBe(3)
   })
 
@@ -169,7 +175,9 @@ describe.each(backends)('CRUD (%s)', (backend) => {
     const n = await Post.objects.filter({ published: true }).update({ views: F('views').add(1) })
     expect(n).toBe(2)
     expect((await Post.objects.get({ slug: 'typed-orm' })).views).toBe(26)
-    await Post.objects.filter(Q({ slug: 'draft' }).or({ slug: 'life-notes' })).update({ views: F('views').mul(2).add(F('views')) })
+    await Post.objects
+      .filter(Q({ slug: 'draft' }).or({ slug: 'life-notes' }))
+      .update({ views: F('views').mul(2).add(F('views')) })
     expect((await Post.objects.get({ slug: 'life-notes' })).views).toBe(9)
     expect(await Post.objects.filter({ author__name: 'Bob' }).update({ published: true })).toBe(2)
     expect(await Post.objects.filter({ published: false }).count()).toBe(0)
@@ -187,13 +195,18 @@ describe.each(backends)('CRUD (%s)', (backend) => {
     expect(created3).toBe(false)
     expect(c.age).toBe(50)
     expect((await Author.objects.get({ name: 'Ann' })).age).toBe(50)
-    const [d, created4] = await Author.objects.updateOrCreate({ name: 'Bob' }, { defaults: { age: 1 }, createDefaults: { age: 2 } })
+    const [d, created4] = await Author.objects.updateOrCreate(
+      { name: 'Bob' },
+      { defaults: { age: 1 }, createDefaults: { age: 2 } },
+    )
     expect(created4).toBe(true)
     expect(d.age).toBe(2)
   })
 
   it('bulkCreate / bulkUpdate / inBulk', async () => {
-    const tags = await Tag.objects.bulkCreate(Array.from({ length: 120 }, (_, i) => new Tag({ name: `t${i}` })))
+    const tags = await Tag.objects.bulkCreate(
+      Array.from({ length: 120 }, (_, i) => new Tag({ name: `t${i}` })),
+    )
     expect(tags.every((t) => typeof t.id === 'number')).toBe(true)
     expect(new Set(tags.map((t) => t.id)).size).toBe(120)
     expect(await Tag.objects.count()).toBe(120)
@@ -208,7 +221,9 @@ describe.each(backends)('CRUD (%s)', (backend) => {
     expect(await Tag.objects.filter({ name__in: ['zero', 'one'] }).count()).toBe(2)
     // large IN lists (> D1's 100 bound parameters)
     expect(await Tag.objects.filter({ id__in: tags.map((t) => t.id) }).count()).toBe(120)
-    const ignored = await Tag.objects.bulkCreate([new Tag({ name: 'zero' }), new Tag({ name: 'fresh' })], { ignoreConflicts: true })
+    const ignored = await Tag.objects.bulkCreate([new Tag({ name: 'zero' }), new Tag({ name: 'fresh' })], {
+      ignoreConflicts: true,
+    })
     expect(ignored.length).toBe(2)
     expect(await Tag.objects.count()).toBe(121)
   })

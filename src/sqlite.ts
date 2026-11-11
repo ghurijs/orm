@@ -41,7 +41,9 @@ export class SqliteConnection extends BaseConnection {
   }
 
   protected override normalizeParams(params: unknown[]): unknown[] {
-    return super.normalizeParams(params).map((p) => (p instanceof Uint8Array && !Buffer.isBuffer(p) ? Buffer.from(p) : p))
+    return super
+      .normalizeParams(params)
+      .map((p) => (p instanceof Uint8Array && !Buffer.isBuffer(p) ? Buffer.from(p) : p))
   }
 
   private prepare(sql: string): Statement {
@@ -61,7 +63,8 @@ export class SqliteConnection extends BaseConnection {
     const stmt = this.prepare(sql)
     if (stmt.reader) {
       const rows = (stmt.all as (...a: unknown[]) => unknown[])(...params) as Record<string, unknown>[]
-      for (const r of rows) for (const k in r) if (Buffer.isBuffer(r[k])) r[k] = new Uint8Array(r[k] as Buffer)
+      for (const r of rows)
+        for (const k in r) if (Buffer.isBuffer(r[k])) r[k] = new Uint8Array(r[k] as Buffer)
       return { rows, rowsAffected: rows.length }
     }
     const info = (stmt.run as (...a: unknown[]) => Database.RunResult)(...params)
@@ -91,8 +94,11 @@ export interface SqliteOptions {
 export function openSqlite(opts: SqliteOptions): SqliteConnection {
   const db = new Database(opts.filename, opts.options)
   db.pragma('foreign_keys = ON')
-  if (opts.filename !== ':memory:' && opts.filename !== '' && opts.wal !== false) db.pragma('journal_mode = WAL')
-  db.function('regexp', { deterministic: true }, (pattern: unknown, value: unknown) => regexp(String(pattern), value))
+  if (opts.filename !== ':memory:' && opts.filename !== '' && opts.wal !== false)
+    db.pragma('journal_mode = WAL')
+  db.function('regexp', { deterministic: true }, (pattern: unknown, value: unknown) =>
+    regexp(String(pattern), value),
+  )
   return new SqliteConnection(db)
 }
 
@@ -104,7 +110,7 @@ export function sqlite(opts: SqliteOptions): DatabaseConfig {
     dialect: 'sqlite',
     options: { filename: opts.filename },
     connect() {
-      if (!shared || !shared.db.open) shared = openSqlite(opts)
+      if (!shared?.db.open) shared = openSqlite(opts)
       return shared
     },
   }

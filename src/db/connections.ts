@@ -156,11 +156,15 @@ function quoteSp(name: string): string {
  * (best effort) and still defers `onCommit` callbacks until it returns successfully. Use
  * `connection.batch()` for all-or-nothing groups of statements on D1.
  */
-export async function atomic<T>(fn: () => Promise<T>, opts: { using?: string; savepoint?: boolean } = {}): Promise<T> {
+export async function atomic<T>(
+  fn: () => Promise<T>,
+  opts: { using?: string; savepoint?: boolean } = {},
+): Promise<T> {
   const alias = opts.using ?? DEFAULT_DB_ALIAS
   const frame = currentFrame(alias)
   if (frame) {
-    if (!frame.transactional || opts.savepoint === false || !frame.conn.features.supportsSavepoints) return fn()
+    if (!frame.transactional || opts.savepoint === false || !frame.conn.features.supportsSavepoints)
+      return fn()
     const sp = `ghuri_sp_${++frame.savepointCounter}`
     const commitMark = frame.onCommit.length
     await frame.conn.execute(`SAVEPOINT ${quoteSp(sp)}`)
@@ -181,7 +185,14 @@ export async function atomic<T>(fn: () => Promise<T>, opts: { using?: string; sa
 
   const conn = await connections.get(alias)
   const run = async (txConn: Connection, transactional: boolean): Promise<[T, AtomicFrame]> => {
-    const newFrame: AtomicFrame = { alias, conn: txConn, depth: 1, savepointCounter: 0, onCommit: [], transactional }
+    const newFrame: AtomicFrame = {
+      alias,
+      conn: txConn,
+      depth: 1,
+      savepointCounter: 0,
+      onCommit: [],
+      transactional,
+    }
     const store = new Map(atomicStorage.getStore() ?? [])
     store.set(alias, newFrame)
     const result = await atomicStorage.run(store, fn)
@@ -199,7 +210,10 @@ export async function atomic<T>(fn: () => Promise<T>, opts: { using?: string; sa
 }
 
 /** Run `fn` after the outermost atomic block commits (immediately when not in a transaction). */
-export async function onCommit(fn: () => unknown | Promise<unknown>, opts: { using?: string } = {}): Promise<void> {
+export async function onCommit(
+  fn: () => unknown | Promise<unknown>,
+  opts: { using?: string } = {},
+): Promise<void> {
   const frame = currentFrame(opts.using ?? DEFAULT_DB_ALIAS)
   if (frame) frame.onCommit.push(fn)
   else await fn()

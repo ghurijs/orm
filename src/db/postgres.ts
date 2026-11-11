@@ -73,7 +73,10 @@ export class PostgresJsConnection extends BaseConnection {
 }
 
 function isWorkersRuntime(): boolean {
-  return typeof navigator !== 'undefined' && (navigator as { userAgent?: string }).userAgent === 'Cloudflare-Workers'
+  return (
+    typeof navigator !== 'undefined' &&
+    (navigator as { userAgent?: string }).userAgent === 'Cloudflare-Workers'
+  )
 }
 
 /**
@@ -102,11 +105,15 @@ export function postgres(opts: PostgresOptions): DatabaseConfig {
   }
 }
 
-async function createPostgresConnection(opts: PostgresOptions, env: Record<string, any>): Promise<PostgresJsConnection> {
+async function createPostgresConnection(
+  opts: PostgresOptions,
+  env: Record<string, any>,
+): Promise<PostgresJsConnection> {
   let url = opts.url
   if (opts.hyperdrive) {
     const hd = env?.[opts.hyperdrive] as { connectionString?: string } | undefined
-    if (!hd?.connectionString) throw new ImproperlyConfigured(`Hyperdrive binding '${opts.hyperdrive}' not found in env.`)
+    if (!hd?.connectionString)
+      throw new ImproperlyConfigured(`Hyperdrive binding '${opts.hyperdrive}' not found in env.`)
     url = hd.connectionString
   }
   if (!url) throw new ImproperlyConfigured('postgres() needs `url` or `hyperdrive`.')
@@ -114,7 +121,9 @@ async function createPostgresConnection(opts: PostgresOptions, env: Record<strin
   try {
     postgresJs = (await import('postgres')).default
   } catch (err) {
-    throw new ImproperlyConfigured("postgres() requires the 'postgres' package (npm install postgres).", { cause: err })
+    throw new ImproperlyConfigured("postgres() requires the 'postgres' package (npm install postgres).", {
+      cause: err,
+    })
   }
   let drizzleFactory: ((client: any) => any) | undefined
   try {

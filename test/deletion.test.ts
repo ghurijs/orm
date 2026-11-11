@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   type DeleteSignalArgs,
   type PostSaveSignalArgs,
+  ProtectedError,
   postDelete,
   postSave,
   preDelete,
   preSave,
-  ProtectedError,
   RestrictedError,
   type SaveSignalArgs,
 } from '../src/index'

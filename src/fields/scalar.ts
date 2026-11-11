@@ -127,7 +127,10 @@ export class SlugField<const O extends SlugFieldOptions = {}> extends CharField<
     return extra
   }
   protected override baseJsonSchema(): Record<string, unknown> {
-    return { ...super.baseJsonSchema(), pattern: this.options.allowUnicode ? '^[-\\w]+$' : '^[-a-zA-Z0-9_]+$' }
+    return {
+      ...super.baseJsonSchema(),
+      pattern: this.options.allowUnicode ? '^[-\\w]+$' : '^[-a-zA-Z0-9_]+$',
+    }
   }
 }
 
@@ -193,7 +196,10 @@ export interface GenericIPAddressFieldOptions extends FieldOptions<string> {
   protocol?: 'both' | 'IPv4' | 'IPv6'
   unpackIpv4?: boolean
 }
-export class GenericIPAddressField<const O extends GenericIPAddressFieldOptions = {}> extends Field<string, O> {
+export class GenericIPAddressField<const O extends GenericIPAddressFieldOptions = {}> extends Field<
+  string,
+  O
+> {
   static override readonly internalType: string = 'GenericIPAddressField'
   override emptyStringsAllowed = false
   constructor(options: O = {} as O) {
@@ -215,7 +221,11 @@ export class GenericIPAddressField<const O extends GenericIPAddressFieldOptions 
   }
   protected override baseJsonSchema(): Record<string, unknown> {
     const p = this.options.protocol ?? 'both'
-    return p === 'IPv4' ? { type: 'string', format: 'ipv4' } : p === 'IPv6' ? { type: 'string', format: 'ipv6' } : { type: 'string' }
+    return p === 'IPv4'
+      ? { type: 'string', format: 'ipv4' }
+      : p === 'IPv6'
+        ? { type: 'string', format: 'ipv6' }
+        : { type: 'string' }
   }
 }
 
@@ -329,7 +339,9 @@ export class FloatField<const O extends FieldOptions<number> = {}> extends Field
     return value === null || value === undefined ? null : Number(value)
   }
   override getPrepValue(value: unknown): unknown {
-    return typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value)) ? Number(value) : value
+    return typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))
+      ? Number(value)
+      : value
   }
   override formHint(): FormHint {
     return this.withHintCommon({ widget: 'number', step: 'any' })
@@ -376,7 +388,8 @@ export class DecimalField<const O extends DecimalFieldOptions = {}> extends Fiel
   }
   override toPython(value: unknown): string {
     if (typeof value === 'number') {
-      if (!Number.isFinite(value)) throw new ValidationError(`“${value}” value must be a decimal number.`, { code: 'invalid' })
+      if (!Number.isFinite(value))
+        throw new ValidationError(`“${value}” value must be a decimal number.`, { code: 'invalid' })
       return this.format(value)
     }
     const s = String(value).trim()
@@ -403,8 +416,14 @@ export class DecimalField<const O extends DecimalFieldOptions = {}> extends Fiel
     return out
   }
   override formHint(): FormHint {
-    const step = this.decimalPlaces !== undefined ? (10 ** -this.decimalPlaces).toFixed(this.decimalPlaces) : 'any'
-    return this.withHintCommon({ widget: 'number', step, maxDigits: this.maxDigits, decimalPlaces: this.decimalPlaces })
+    const step =
+      this.decimalPlaces !== undefined ? (10 ** -this.decimalPlaces).toFixed(this.decimalPlaces) : 'any'
+    return this.withHintCommon({
+      widget: 'number',
+      step,
+      maxDigits: this.maxDigits,
+      decimalPlaces: this.decimalPlaces,
+    })
   }
   protected override baseJsonSchema(): Record<string, unknown> {
     return { type: 'string', format: 'decimal', pattern: '^-?\\d+(\\.\\d+)?$' }
@@ -463,7 +482,9 @@ export class BooleanField<const O extends FieldOptions<boolean> = {}> extends Fi
 }
 
 /** Deprecated Django alias. */
-export class NullBooleanField<const O extends FieldOptions<boolean> = {}> extends BooleanField<O & { null: true }> {
+export class NullBooleanField<const O extends FieldOptions<boolean> = {}> extends BooleanField<
+  O & { null: true }
+> {
   constructor(options: O = {} as O) {
     super({ ...options, null: true, blank: true } as O & { null: true })
   }
@@ -530,9 +551,12 @@ export class DateField<const O extends DateFieldOptions<string | Date> = {}> ext
     throw this.invalid(value)
   }
   protected invalid(value: unknown): ValidationError {
-    return new ValidationError(`“${String(value)}” value has an invalid date format. It must be in YYYY-MM-DD format.`, {
-      code: 'invalid',
-    })
+    return new ValidationError(
+      `“${String(value)}” value has an invalid date format. It must be in YYYY-MM-DD format.`,
+      {
+        code: 'invalid',
+      },
+    )
   }
   override toDb(value: string | null | undefined): unknown {
     if (value === null || value === undefined) return null
@@ -568,7 +592,10 @@ export class DateField<const O extends DateFieldOptions<string | Date> = {}> ext
 }
 
 /** Instants as `Date`. ISO-8601 UTC text (`2024-01-02T03:04:05.000Z`) in SQLite/D1, `timestamptz` in PostgreSQL. */
-export class DateTimeField<const O extends DateFieldOptions<Date | string | number> = {}> extends Field<Date, O> {
+export class DateTimeField<const O extends DateFieldOptions<Date | string | number> = {}> extends Field<
+  Date,
+  O
+> {
   static override readonly internalType: string = 'DateTimeField'
   override emptyStringsAllowed = false
   readonly autoNow: boolean
@@ -605,7 +632,8 @@ export class DateTimeField<const O extends DateFieldOptions<Date | string | numb
     // Accept 'YYYY-MM-DD HH:MM[:SS]' and date-only strings as UTC.
     let normalized = s
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) normalized = `${s}T00:00:00Z`
-    else if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s)) normalized = `${s.replace(' ', 'T')}Z`
+    else if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s))
+      normalized = `${s.replace(' ', 'T')}Z`
     const d = new Date(normalized)
     if (Number.isNaN(d.getTime())) throw this.invalid(value)
     return d
@@ -686,9 +714,12 @@ export class TimeField<const O extends DateFieldOptions<string> = {}> extends Fi
     const s = String(value).trim()
     const m = TIME_RE.exec(s)
     if (!m || Number(m[1]) > 23 || Number(m[2]) > 59 || Number(m[3] ?? 0) > 59) {
-      throw new ValidationError(`“${s}” value has an invalid format. It must be in HH:MM[:ss[.uuuuuu]] format.`, {
-        code: 'invalid',
-      })
+      throw new ValidationError(
+        `“${s}” value has an invalid format. It must be in HH:MM[:ss[.uuuuuu]] format.`,
+        {
+          code: 'invalid',
+        },
+      )
     }
     const base = `${pad(Number(m[1]))}:${m[2]}:${m[3] ?? '00'}`
     return m[4] ? `${base}.${m[4]}` : base
@@ -713,7 +744,8 @@ export class DurationField<const O extends FieldOptions<number> = {}> extends Fi
   override emptyStringsAllowed = false
   override toPython(value: unknown): number {
     const n = typeof value === 'number' ? value : Number(value)
-    if (!Number.isFinite(n)) throw new ValidationError(`“${String(value)}” value has an invalid duration.`, { code: 'invalid' })
+    if (!Number.isFinite(n))
+      throw new ValidationError(`“${String(value)}” value has an invalid duration.`, { code: 'invalid' })
     return Math.round(n)
   }
   override toDb(value: number | null | undefined): unknown {

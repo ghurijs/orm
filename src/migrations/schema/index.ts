@@ -3,8 +3,8 @@ import { BaseSchemaEditor, type SchemaConnection, type SchemaEditorOptions } fro
 import { PostgresSchemaEditor } from './postgresql'
 import { SqliteSchemaEditor } from './sqlite'
 
-export { BaseSchemaEditor, PostgresSchemaEditor, SqliteSchemaEditor }
 export type { SchemaConnection, SchemaEditorOptions }
+export { BaseSchemaEditor, PostgresSchemaEditor, SqliteSchemaEditor }
 
 /** The schema editor for a connection's (or a bare) dialect. */
 export function schemaEditorFor(
@@ -12,7 +12,8 @@ export function schemaEditorFor(
   options: SchemaEditorOptions = {},
 ): BaseSchemaEditor {
   const dialect = typeof connection === 'string' ? connection : connection.dialect
-  const conn = typeof connection === 'string' || !('execute' in connection) ? null : (connection as SchemaConnection)
+  const conn =
+    typeof connection === 'string' || !('execute' in connection) ? null : (connection as SchemaConnection)
   const opts = conn ? options : { ...options, collectOnly: true }
   return dialect === 'postgresql' ? new PostgresSchemaEditor(conn, opts) : new SqliteSchemaEditor(conn, opts)
 }
