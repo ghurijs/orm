@@ -1,3 +1,4 @@
+import { ValidationError } from '@ghuri/core'
 import {
   BigIntegerField,
   BinaryField,
@@ -97,7 +98,7 @@ export class Post extends Model({
   publishDate: new DateField({ null: true, blank: true }),
   createdAt: new DateTimeField({ autoNowAdd: true }),
   updatedAt: new DateTimeField({ autoNow: true }),
-  metadata: new JSONField({ default: () => ({}) }),
+  metadata: new JSONField({ default: () => ({}), blank: true }),
   status: new CharField({
     maxLength: 10,
     choices: [
@@ -157,6 +158,10 @@ export class Owner extends Model({
 }) {
   declare static objects: Manager<Owner>
   static Meta = { appLabel: 'tests' }
+  override clean(): void {
+    if (this.name === 'forbidden') throw new ValidationError('Forbidden name.')
+    if (this.name === 'bad-field') throw new ValidationError({ name: 'Bad name.' })
+  }
 }
 
 export const fallbackOwnerId = { value: null as number | null }

@@ -413,8 +413,16 @@ export class Scope implements CompileScope {
   compileValue(value: unknown, field?: Field<any, any>): Sql {
     if (value instanceof Expression) return value.compile(this)
     if (field) return field.dbParam(field.getPrepValue(value), this.dialect)
+    if (this.dialect === 'postgresql') {
+      // Untyped parameters would be inferred as text: give literals an explicit type.
+      if (value instanceof Date) return Sql.param(value.toISOString()).wrap('CAST(', ' AS timestamptz)')
+      if (typeof value === 'boolean') return Sql.param(value).wrap('CAST(', ' AS boolean)')
+      if (typeof value === 'number') return Sql.param(value).wrap('CAST(', Number.isInteger(value) ? ' AS bigint)' : ' AS double precision)')
+      if (typeof value === 'string') return Sql.param(value).wrap('CAST(', ' AS text)')
+      return Sql.param(value)
+    }
     if (value instanceof Date) return Sql.param(value.toISOString())
-    if (typeof value === 'boolean' && this.dialect === 'sqlite') return Sql.param(value ? 1 : 0)
+    if (typeof value === 'boolean') return Sql.param(value ? 1 : 0)
     return Sql.param(value)
   }
 
@@ -684,17 +692,29 @@ export class Scope implements CompileScope {
         const kind = insensitive ? lookup.slice(1) : lookup
         const textL = this.textLhs(lhs, field)
         if (value instanceof Expression) {
-          // pattern from an expression
-          const rhs = value.compile(this)
-          const pat =
-            kind === 'contains'
-              ? rhs.wrap("'%' || ", " || '%'")
-              : kind === 'startswith'
-                ? rhs.wrap('', " || '%'")
-                : rhs.wrap("'%' || ", '')
-          const l = insensitive || !pg ? textL.wrap('UPPER(', ')') : textL
-          const r = insensitive || !pg ? pat.wrap('UPPER(', ')') : pat
-          return new Sql().append(l).append(' LIKE ').append(r)
+          // pattern from another column/expression: compare with string functions (no wildcards involved)
+          let l = textL
+          let r = value.compile(this)
+          if (pg && !(value instanceof Expression && value.outputField(this) && TEXT_TYPES.has(value.outputField(this)!.internalType))) {
+            r = r.wrap('CAST(', ' AS text)')
+          }
+          if (insensitive) {
+            l = l.wrap('UPPER(', ')')
+            r = r.wrap('UPPER(', ')')
+          }
+          if (kind === 'contains') {
+            return new Sql([pg ? 'strpos(' : 'instr(']).append(l).append(', ').append(r).append(') > 0')
+          }
+          const len = r.wrap('length(', ')')
+          const part =
+            kind === 'startswith'
+              ? pg
+                ? new Sql(['left(']).append(l).append(', ').append(len).append(')')
+                : new Sql(['substr(']).append(l).append(', 1, ').append(len).append(')')
+              : pg
+                ? new Sql(['right(']).append(l).append(', ').append(len).append(')')
+                : new Sql(['substr(']).append(l).append(', -').append(len).append(')')
+          return part.append(' = ').append(r)
         }
         const s = String(value)
         if (!insensitive && !pg) {
@@ -987,11 +1007,21 @@ export function appendLimit(out: Sql, state: QueryState, dialect: Dialect): void
   }
 }
 
+/**
+ * NULL ordering is normalized to SQLite's (NULLs are the smallest values) so results don't change when
+ * moving from D1/SQLite to PostgreSQL. PostgreSQL gets explicit NULLS FIRST/LAST for nullable columns.
+ */
+function pgNulls(scope: Scope, desc: boolean, nullable: boolean): string {
+  if (scope.dialect !== 'postgresql' || !nullable) return ''
+  return desc ? ' NULLS LAST' : ' NULLS FIRST'
+}
+
 function compileOrderItem(scope: Scope, o: string | OrderBy, plan: ModelPlan | ValuesPlan): Sql {
   if (o instanceof OrderBy) {
     let s = o.expression.compile(scope).wrap('', o.descending ? ' DESC' : ' ASC')
     if (o.opts.nullsFirst) s = s.wrap('', ' NULLS FIRST')
-    if (o.opts.nullsLast) s = s.wrap('', ' NULLS LAST')
+    else if (o.opts.nullsLast) s = s.wrap('', ' NULLS LAST')
+    else s = s.wrap('', pgNulls(scope, o.descending, true))
     return s
   }
   if (o === '?') return Sql.raw('RANDOM()')
@@ -1001,15 +1031,16 @@ function compileOrderItem(scope: Scope, o: string | OrderBy, plan: ModelPlan | V
   // Order by an annotation / values column through its select alias.
   if (plan.kind === 'model') {
     const a = plan.annotations.find((x) => x.name === name)
-    if (a) return ident(a.alias).wrap('', dir)
+    if (a) return ident(a.alias).wrap('', dir + pgNulls(scope, desc, true))
   } else {
     const c = plan.columns.find((x) => x.key === name)
-    if (c && scope.findAnnotation(name)) return ident(c.alias).wrap('', dir)
+    if (c && scope.findAnnotation(name)) return ident(c.alias).wrap('', dir + pgNulls(scope, desc, true))
   }
   const r = scope.resolvePath(name.split(LOOKUP_SEP), { allowMulti: true })
-  if (r.kind === 'annotation') return r.expr.compile(scope).wrap('', dir)
+  if (r.kind === 'annotation') return r.expr.compile(scope).wrap('', dir + pgNulls(scope, desc, true))
   if (r.kind !== 'column' || r.rest.length) throw new FieldError(`Cannot resolve keyword '${name}' into field for ordering.`)
-  return scope.col(r.entry, r.field.column).wrap('', dir)
+  const nullable = r.field.null || r.entry !== scope.rootEntry
+  return scope.col(r.entry, r.field.column).wrap('', dir + pgNulls(scope, desc, nullable))
 }
 
 /** SELECT used as a value subquery (`pk__in: qs`, `exact: qs`). */

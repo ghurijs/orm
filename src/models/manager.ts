@@ -50,8 +50,9 @@ export class Manager<T = any> {
     return new QuerySet<T>(this.model)
   }
 
+  /** The manager's base QuerySet (prefetched results are kept, like Django). */
   all(): QuerySet<T> {
-    return this.getQueryset().all()
+    return this.getQueryset()
   }
   filter(...args: FilterArg<T>[]): QuerySet<T> {
     return this.getQueryset().filter(...args)

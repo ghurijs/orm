@@ -582,7 +582,7 @@ Object.defineProperty(BaseModel, '_defaultManager', {
       if (!m) throw new ImproperlyConfigured(`${meta.objectName} has no manager named '${name}'.`)
       return m[1]
     }
-    return meta.managers[0]?.[1] ?? this.objects
+    return this.objects
   },
   configurable: true,
 })

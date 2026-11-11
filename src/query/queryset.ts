@@ -310,11 +310,11 @@ export class QuerySet<T = any> implements PromiseLike<T[]>, AsyncIterable<T> {
 
   async latest(...fields: string[]): Promise<T> {
     const order = this.latestFields(fields).map((f) => (f.startsWith('-') ? f.slice(1) : `-${f}`))
-    return this.orderBy(...order).get()
+    return this.orderBy(...order).slice(0, 1).get()
   }
 
   async earliest(...fields: string[]): Promise<T> {
-    return this.orderBy(...this.latestFields(fields)).get()
+    return this.orderBy(...this.latestFields(fields)).slice(0, 1).get()
   }
 
   async count(): Promise<number> {
