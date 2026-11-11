@@ -474,10 +474,20 @@ export function registerDbType(internalType: string, types: Partial<Record<Diale
     DB_TYPES[d][internalType] = spec
 }
 
+/**
+ * Column type of a field: looked up by `internalType`, then by the parent classes' internal types (so a
+ * `FileField extends CharField` gets `varchar(n)` without registering anything).
+ */
 export function dbTypeFor(field: Field<any, any>, dialect: Dialect): string | null {
-  const spec = DB_TYPES[dialect][field.internalType]
-  if (spec === undefined) return null
-  return typeof spec === 'function' ? spec(field) : spec
+  let cls: any = field.constructor
+  while (cls && cls !== Field) {
+    const spec = Object.hasOwn(cls, 'internalType')
+      ? DB_TYPES[dialect][cls.internalType as string]
+      : undefined
+    if (spec !== undefined) return typeof spec === 'function' ? spec(field) : spec
+    cls = Object.getPrototypeOf(cls)
+  }
+  return null
 }
 
 // drizzle.ts installs the real builder (keeps this module free of drizzle imports).

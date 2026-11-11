@@ -218,6 +218,16 @@ describe('Model._meta', () => {
     )
   })
 
+  it('custom field subclasses inherit the parent column type', () => {
+    class FileLikeField extends CharField {
+      static override readonly internalType = 'FileLikeField'
+    }
+    const f = new FileLikeField({ maxLength: 100 })
+    expect(f.internalType).toBe('FileLikeField')
+    expect(f.dbType('sqlite')).toBe('varchar(100)')
+    expect(f.dbType('postgresql')).toBe('varchar(100)')
+  })
+
   it('collects DDL without executing (sqlmigrate)', async () => {
     const editor = schemaEditorFor('postgresql')
     await editor.run((e) => e.createModel(Post))

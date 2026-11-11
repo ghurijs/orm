@@ -302,6 +302,29 @@ describe.each(backends)('CRUD (%s)', (backend) => {
     expect(calls).toEqual(['body', 'committed'])
   })
 
+  it('connection batch() and per-context connection caching', async () => {
+    const { connections } = await import('../src/index')
+    const { createContext, getContext, runWithContext } = await import('@ghuri/core')
+    const conn = await connections.get()
+    expect(await connections.get()).toBe(conn)
+    const q = (name: string) => ({
+      sql: `INSERT INTO "tests_tag" ("name") VALUES (${conn.dialect === 'postgresql' ? '$1' : '?'})`,
+      params: [name],
+    })
+    await conn.batch?.([q('b1'), q('b2')])
+    expect(await Tag.objects.filter({ name__startswith: 'b' }).count()).toBe(2)
+    // a batch is all-or-nothing on every backend (D1 batches are atomic)
+    await expect(conn.batch?.([q('b3'), q('b1')])).rejects.toBeInstanceOf(IntegrityError)
+    expect(await Tag.objects.filter({ name: 'b3' }).exists()).toBe(false)
+    // a request context gets its own cache entry
+    const outer = getContext()
+    const reqCtx = createContext({ env: outer.env, settings: outer.settings })
+    await runWithContext(reqCtx, async () => {
+      expect(await Tag.objects.count()).toBe(2)
+      expect(reqCtx.state.size).toBe(1)
+    })
+  })
+
   it('titles helper sanity', async () => {
     await blogFixture()
     expect(titles(await Post.objects.all())).toEqual(['Draft', 'Hello Ghuri', 'Life notes', 'Typed ORM'])
