@@ -182,10 +182,15 @@ export class MigrationAutodetector {
 
   // ---- detection --------------------------------------------------------------------------------
 
-  private keys(state: ProjectState, convert: Set<string>): Set<string> {
+  /**
+   * Model keys taking part in the diff (Django's old/new model keys). Models of apps without migrations
+   * (`realApps`) are never part of the old state; they are part of the new state only for `convert` apps,
+   * so `makemigrations <app>` writes an initial migration for an app that has no migrations yet.
+   */
+  private keys(state: ProjectState, convert: Set<string>, side: 'old' | 'new'): Set<string> {
     const out = new Set<string>()
     for (const [k, ms] of state.models) {
-      if (this.fromState.realApps.has(ms.appLabel) && !convert.has(ms.appLabel)) continue
+      if (this.fromState.realApps.has(ms.appLabel) && (side === 'old' || !convert.has(ms.appLabel))) continue
       out.add(k)
     }
     return out
@@ -197,8 +202,12 @@ export class MigrationAutodetector {
 
   private async detect(convert: Set<string>): Promise<void> {
     const to = this.toState
-    let oldKeys = this.keys(this.working, convert)
-    const newKeys = this.keys(to, convert)
+    // Apps being converted start from nothing: their live models are created by the new migration.
+    for (const ms of [...this.working.models.values()])
+      if (convert.has(ms.appLabel) && this.fromState.realApps.has(ms.appLabel))
+        this.working.removeModel(ms.appLabel, ms.name)
+    let oldKeys = this.keys(this.working, convert, 'old')
+    const newKeys = this.keys(to, convert, 'new')
 
     // 1. renamed models
     const added = [...newKeys].filter((k) => !oldKeys.has(k)).sort()
@@ -213,7 +222,7 @@ export class MigrationAutodetector {
           const op = new RenameModel({ oldName: om.name, newName: nm.name })
           op.stateForwards(om.appLabel, this.working)
           this.add(op, om.appLabel, [`model:${nk}`], [])
-          oldKeys = this.keys(this.working, convert)
+          oldKeys = this.keys(this.working, convert, 'old')
           break
         }
       }

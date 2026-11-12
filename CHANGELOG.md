@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `makemigrations <app>` writes the initial migration of an app that has no `migrations/` directory (the app's live models were left in the old state, so nothing was detected).
+- Historical states ignore unresolved relations of unmigrated apps (e.g. a test app's ForeignKey to `auth.User` while `auth`'s first migration is applied) instead of failing `migrate`.
+- `pglite({ dataDir })` creates the data directory (and parents) on first connect.
+
 ## 0.1.0-alpha.0 (unreleased)
 
 - Models: `Model({...})` factory with inferred instance types, `BaseModel`, `_meta` (Options), abstract models,

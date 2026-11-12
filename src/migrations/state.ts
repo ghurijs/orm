@@ -272,13 +272,19 @@ export function normalizeUniqueTogether(ut: unknown): string[][] {
 export class StateApps {
   readonly registry = new ModelRegistry({ isolated: true })
 
-  constructor(models: Iterable<ModelState>) {
+  /**
+   * @param realApps apps without migrations (their live models are part of every state). Their unresolved
+   * relations are ignored: an unmigrated app may point at a model a migration creates later (e.g. a test
+   * app's ForeignKey to `auth.User` while `auth`'s first migration is being applied).
+   */
+  constructor(models: Iterable<ModelState>, realApps: Iterable<string> = []) {
     const states = [...models]
     for (const ms of states) {
       const cls = ms.render(this.registry)
       void cls._meta
     }
-    const left = this.registry.resolvePending()
+    const real = new Set(realApps)
+    const left = this.registry.resolvePending().filter((f) => !real.has(f.model?._meta?.appLabel as string))
     if (left.length) {
       const names = left.map(
         (f) => `${f.model?._meta?.label ?? '?'}.${f.name} → ${typeof f.to === 'string' ? f.to : '?'}`,
@@ -358,7 +364,7 @@ export class ProjectState {
 
   /** Rendered historical models (cached until the next mutation). */
   get apps(): StateApps {
-    if (!this._apps) this._apps = new StateApps(this.models.values())
+    if (!this._apps) this._apps = new StateApps(this.models.values(), this.realApps)
     return this._apps
   }
 

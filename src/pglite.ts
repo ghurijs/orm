@@ -45,6 +45,16 @@ export interface PGliteOptions {
 
 /** Create a PGlite instance with Ghuri's type parsers (int8 → number). */
 export async function openPGlite(opts: PGliteOptions = {}): Promise<PGliteConnection> {
+  // A directory on disk (not `memory://`, `idb://`, `opfs-ahp://`): create it like Postgres' initdb would.
+  if (
+    opts.dataDir &&
+    !/^[a-z-]+:\/\//.test(opts.dataDir) &&
+    typeof process !== 'undefined' &&
+    process.versions?.node
+  ) {
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(opts.dataDir, { recursive: true })
+  }
   const pg = new PGlite(opts.dataDir, { parsers: { [types.INT8]: (v: string) => Number(v) } })
   await pg.waitReady
   return new PGliteConnection(pg)
