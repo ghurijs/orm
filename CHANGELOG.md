@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-alpha.1
+
+- fix(testing): `setupTestDatabase({ using: "d1" })` works with Miniflare 5 (pinned by wrangler 4.160+) by converting v4-style options with `convertV4MiniflareOptions` when available.
+
 ## Unreleased
 
 - Testing: `TestDatabase.flush()` sends `postMigrate` for every installed app after deleting the rows (like `ghuri flush`), so post-migrate data such as `auth` permissions is recreated; `flush({ inhibitPostMigrate: true })` opts out. `setupTestDatabase()` also sends `postMigrate` when no installed app has migrations. New `emitPostMigrate(using)` export.

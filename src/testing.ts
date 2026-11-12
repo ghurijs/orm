@@ -108,12 +108,16 @@ async function openConnection(
     const { openPGlite } = await import('./pglite')
     return { conn: await openPGlite() }
   }
-  const { Miniflare } = await import('miniflare')
-  const mf = new Miniflare({
+  const mod: any = await import('miniflare')
+  const options = {
     modules: true,
     script: 'export default { fetch() { return new Response(null, { status: 204 }) } }',
     d1Databases: { DB: `ghuri-test-${crypto.randomUUID()}` },
-  })
+  }
+  // Miniflare 5 (pinned by wrangler 4.160+) takes a new options shape and ships a converter for the v4 shape.
+  const mf = new mod.Miniflare(
+    typeof mod.convertV4MiniflareOptions === 'function' ? mod.convertV4MiniflareOptions(options) : options,
+  )
   const db = (await mf.getD1Database('DB')) as unknown as D1DatabaseLike
   return { conn: new D1Connection(db), dispose: () => mf.dispose() }
 }
