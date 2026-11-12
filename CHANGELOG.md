@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Testing: `TestDatabase.flush()` sends `postMigrate` for every installed app after deleting the rows (like `ghuri flush`), so post-migrate data such as `auth` permissions is recreated; `flush({ inhibitPostMigrate: true })` opts out. `setupTestDatabase()` also sends `postMigrate` when no installed app has migrations. New `emitPostMigrate(using)` export.
 - `makemigrations <app>` writes the initial migration of an app that has no `migrations/` directory (the app's live models were left in the old state, so nothing was detected).
 - Historical states ignore unresolved relations of unmigrated apps (e.g. a test app's ForeignKey to `auth.User` while `auth`'s first migration is applied) instead of failing `migrate`.
 - `pglite({ dataDir })` creates the data directory (and parents) on first connect.

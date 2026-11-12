@@ -491,8 +491,10 @@ afterAll(() => db.teardown())
 `setupTestDatabase` creates a fresh in-memory database (D1 through Miniflare), installs a global context (or
 merges `DATABASES` into the current one), runs the migrations of installed apps that have some (like Django's
 test runner; `postMigrate` is sent) and creates tables directly for every other model (all registered models,
-or `models: [...]`), and returns `{ connection, flush, teardown }`. `setTestSchemaCreator(fn)` replaces that
-step. `testBackends()` reads `GHURI_TEST_BACKENDS` for `describe.each`.
+or `models: [...]`; `postMigrate` is sent for them too), and returns `{ connection, flush, teardown }`.
+`flush()` deletes every row, resets sequences and sends `postMigrate` for every installed app like `ghuri flush`,
+so post-migrate data (e.g. `auth` content types and permissions) is recreated; `flush({ inhibitPostMigrate: true })`
+leaves the tables empty. `setTestSchemaCreator(fn)` replaces the schema step. `testBackends()` reads `GHURI_TEST_BACKENDS` for `describe.each`.
 `captureQueries(fn)` returns the SQL statements a block executed.
 
 ## Escape hatches

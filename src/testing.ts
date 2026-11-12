@@ -10,6 +10,7 @@ import { schemaEditorFor } from './migrations/schema/index'
 import { isAbstractModel, registerModels } from './models/base'
 import { isModelClass, modelRegistry } from './models/registry'
 import type { ModelClass } from './models/types'
+import { postMigrate } from './signals'
 import { globalSingleton } from './utils'
 
 export type TestBackend = 'sqlite' | 'pglite' | 'd1'
@@ -31,10 +32,25 @@ export interface TestDatabase {
   using: TestBackend
   connection: Connection
   models: ModelClass[]
-  /** Delete every row and reset auto-increment sequences. */
-  flush(): Promise<void>
+  /**
+   * Delete every row, reset auto-increment sequences and send `postMigrate` for every installed app (like
+   * Django's `flush`), so post-migrate data such as `auth` permissions and content types is recreated.
+   */
+  flush(opts?: TestFlushOptions): Promise<void>
   /** Close the database and restore the previous context / settings. */
   teardown(): Promise<void>
+}
+
+export interface TestFlushOptions {
+  /** Don't send `postMigrate` after deleting the rows. */
+  inhibitPostMigrate?: boolean
+}
+
+/** Send `postMigrate` for every installed app (what `migrate` and `flush` do at the end). */
+export async function emitPostMigrate(using: string = DEFAULT_DB_ALIAS): Promise<void> {
+  if (!apps.ready) return
+  for (const appConfig of apps.getAppConfigs())
+    await postMigrate.send(appConfig, { appConfig, using, plan: [] })
 }
 
 /**
@@ -58,7 +74,11 @@ export async function migrateOrCreateTables(connection: Connection, models: Mode
   const { MigrationLoader } = await import('./migrations/loader')
   const loader = await MigrationLoader.load({ connection: null })
   const withMigrations = new Set([...loader.migrations.values()].map((m) => m.appLabel))
-  if (!withMigrations.size) return createTablesForModels(connection, models)
+  if (!withMigrations.size) {
+    // `migrate` sends postMigrate itself; without migrations, send it here like Django's test runner does.
+    await createTablesForModels(connection, models)
+    return emitPostMigrate(connection.alias)
+  }
   const { migrate } = await import('./migrations/api')
   const editor = schemaEditorFor(connection)
   for (const m of models) {
@@ -185,7 +205,7 @@ export async function setupTestDatabase(opts: SetupTestDatabaseOptions = {}): Pr
 
   if (opts.createTables !== false) await (schemaCreator.fn ?? migrateOrCreateTables)(conn, models)
 
-  const flush = async () => {
+  const deleteRows = async () => {
     const ordered = tablesInDeleteOrder(models).filter((m) => m._meta.managed)
     if (conn.dialect === 'postgresql') {
       if (!ordered.length) return
@@ -198,6 +218,11 @@ export async function setupTestDatabase(opts: SetupTestDatabaseOptions = {}): Pr
     try {
       await conn.execute('DELETE FROM sqlite_sequence')
     } catch {}
+  }
+
+  const flush = async (flushOpts: TestFlushOptions = {}) => {
+    await deleteRows()
+    if (!flushOpts.inhibitPostMigrate) await emitPostMigrate(alias)
   }
 
   const teardown = async () => {
