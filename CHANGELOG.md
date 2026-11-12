@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.3
 
 - Managers follow JavaScript shadowing: a property of a more-derived class (for example a getter that returns a
   manager) hides a parent's manager of the same name, instead of the parent's manager being bound over it.
