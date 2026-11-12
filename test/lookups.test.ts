@@ -198,6 +198,19 @@ describe.each(backends)('lookups (%s)', (backend) => {
     expect(titles(await Post.objects.filter({ author__in: ids }))).toEqual(['Draft', 'Life notes'])
   })
 
+  it('none() used as a subquery matches nothing', async () => {
+    await blogFixture()
+    const none = Author.objects.none()
+    const noIds = Author.objects.none().valuesList('id', { flat: true })
+    expect(await Post.objects.filter({ author__in: none }).count()).toBe(0)
+    expect(await Post.objects.filter({ author__in: noIds }).count()).toBe(0)
+    expect(await Post.objects.filter({ author__in: noIds }).exists()).toBe(false)
+    expect(await Post.objects.exclude({ author__in: none }).count()).toBe(await Post.objects.count())
+    expect(await Post.objects.filter({ author__in: none }).update({ title: 'x' })).toBe(0)
+    expect((await Post.objects.filter({ author__in: none }).delete())[0]).toBe(0)
+    expect(await Post.objects.filter({ title: 'x' }).count()).toBe(0)
+  })
+
   it('invalid lookups raise FieldError', async () => {
     await expect(Post.objects.filter({ nope: 1 }).count()).rejects.toBeInstanceOf(FieldError)
     await expect(Post.objects.filter({ title__nope: 1 }).count()).rejects.toBeInstanceOf(FieldError)
