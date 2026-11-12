@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.4
 
 - fix: concurrent `atomic()` blocks on one SQLite (better-sqlite3) or PGlite connection no longer fail with
   `cannot start a transaction within a transaction` (SQLite) or silently share one transaction (PGlite: a
