@@ -936,6 +936,9 @@ export function compileSelect(
   // WHERE / HAVING
   const where: Sql[] = []
   const having: Sql[] = []
+  // `none()`: QuerySet methods return early, but a compiled subquery (`filter({ x__in: qs.none() })`) must still
+  // match nothing.
+  if (state.isNone) where.push(Sql.raw('1 = 0'))
   for (const q of state.where) {
     const s = scope.compileQ(q)
     if (s.isEmpty) continue
@@ -1240,7 +1243,7 @@ export function compileCount(state: QueryState, compiler: Compiler): Sql {
 
 /** `WHERE pk IN (SELECT pk FROM ... )` helper used by UPDATE/DELETE. Returns null when unfiltered. */
 export function compilePkSubquery(state: QueryState, compiler: Compiler): Sql | null {
-  if (!state.where.length && !isSliced(state)) return null
+  if (!state.where.length && !isSliced(state) && !state.isNone) return null
   const sub: QueryState = { ...state, values: null, annotations: state.annotations, selectRelated: null }
   return compileSelect(sub, compiler, {
     singleColumn: state.model._meta.pk.name,
