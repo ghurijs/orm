@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- fix: concurrent `atomic()` blocks on one SQLite (better-sqlite3) or PGlite connection no longer fail with
+  `cannot start a transaction within a transaction` (SQLite) or silently share one transaction (PGlite: a
+  rollback in one block undid the other's writes). These backends share one connection per process, so each
+  connection now has a FIFO lock: an outermost transaction (`atomic()`, `connection.transaction()`,
+  `connection.batch()`) holds it until COMMIT/ROLLBACK and concurrent ones queue. Nested `atomic()` and other
+  code in the block's own async context keep using the transaction (savepoints) without waiting.
+- fix: on SQLite and PGlite, queries outside `atomic()` from another async context wait for an open
+  transaction instead of running inside it (they saw its uncommitted rows, and its rollback discarded their
+  writes). PostgreSQL (postgres.js, a pooled connection per transaction) and D1 (no interactive transactions)
+  are unchanged.
+- docs: the README's Testing section says `captureQueries` is imported from `@ghuri/orm` (it was described
+  under `@ghuri/orm/testing`); new README notes on transaction concurrency for SQLite / PGlite.
+
 ## 0.1.0-alpha.3
 
 - Managers follow JavaScript shadowing: a property of a more-derived class (for example a getter that returns a

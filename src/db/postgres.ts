@@ -44,6 +44,11 @@ export class PostgresJsConnection extends BaseConnection {
     super()
   }
 
+  /** Transactions run on a connection reserved from the pool (`sql.begin`): other queries never wait. */
+  protected override get connectionWideTransactions(): boolean {
+    return false
+  }
+
   protected createDrizzle(): any {
     if (!this.drizzleFactory) throw new ImproperlyConfigured('drizzle-orm/postgres-js is not available')
     return this.drizzleFactory(this.sql)

@@ -30,7 +30,7 @@ export class PGliteConnection extends BaseConnection {
   }
 
   async executeScript(sql: string): Promise<void> {
-    await this.pg.exec(sql)
+    await this.serialized(() => this.pg.exec(sql))
   }
 
   async close(): Promise<void> {
