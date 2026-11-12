@@ -72,7 +72,9 @@ export class SqliteConnection extends BaseConnection {
   }
 
   async executeScript(sql: string): Promise<void> {
-    this.db.exec(sql)
+    await this.serialized(async () => {
+      this.db.exec(sql)
+    })
   }
 
   async close(): Promise<void> {

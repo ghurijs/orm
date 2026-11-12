@@ -279,6 +279,19 @@ await atomic(async () => {
 
 Inside `atomic()` every query on that alias uses the transaction. Nested blocks use savepoints.
 
+**Concurrency on SQLite and PGlite.** `sqlite()` and `pglite()` share one connection among all concurrent
+requests of the process (so do the test databases), and a transaction there covers the whole connection.
+Ghuri therefore serialises transactions per connection: concurrent outermost `atomic()` blocks (and
+`connection.batch()` / `connection.transaction()` calls) run one after the other, and queries from other
+requests or tasks outside `atomic()` wait until the open transaction commits or rolls back instead of running
+inside it (they never see its uncommitted rows, and a rollback never takes their writes with it). Django gets
+the same isolation from one connection per thread. Code in the block's own async context — nested `atomic()`
+(savepoints), `Promise.all` inside the block — runs in the transaction without waiting. Two consequences:
+don't await, inside `atomic()`, work started in another async context that queries the same database (it
+would wait for the block: deadlock), and keep blocks short, since they hold the connection. The drizzle escape
+hatch (`getDrizzle()`) bypasses the lock. PostgreSQL (`postgres()`) gives each outermost block its own pooled
+connection (`sql.begin`), so nothing is serialised there.
+
 **D1 has no interactive transactions**: `atomic()` runs the callback directly (no isolation, no rollback;
 `onCommit` callbacks still run after it succeeds). Use `(await connections.get()).batch([...])` for
 all-or-nothing groups of statements on D1.
@@ -495,7 +508,15 @@ or `models: [...]`; `postMigrate` is sent for them too), and returns `{ connecti
 `flush()` deletes every row, resets sequences and sends `postMigrate` for every installed app like `ghuri flush`,
 so post-migrate data (e.g. `auth` content types and permissions) is recreated; `flush({ inhibitPostMigrate: true })`
 leaves the tables empty. `setTestSchemaCreator(fn)` replaces the schema step. `testBackends()` reads `GHURI_TEST_BACKENDS` for `describe.each`.
-`captureQueries(fn)` returns the SQL statements a block executed.
+`captureQueries(fn)` and `onQuery(listener)` are exported from the main entry (`@ghuri/orm`, not
+`@ghuri/orm/testing`); `captureQueries` returns the block's result and the SQL statements it executed:
+
+```ts
+import { captureQueries } from '@ghuri/orm'
+
+const [posts, queries] = await captureQueries(async () => await Post.objects.selectRelated('author'))
+expect(queries).toHaveLength(1)   // queries[i]: { alias, vendor, sql, params, durationMs }
+```
 
 ## Escape hatches
 

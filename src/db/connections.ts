@@ -152,6 +152,12 @@ function quoteSp(name: string): string {
  * Run `fn` in a transaction. Nested calls create savepoints. Inside the callback every query on the alias
  * goes through the transaction's connection.
  *
+ * On single-connection backends (better-sqlite3, PGlite: one connection shared by every concurrent request
+ * of the process) concurrent outermost blocks are serialised by a per-connection lock, and queries from
+ * other async contexts wait until the open transaction ends instead of running inside it. Don't await, inside
+ * `atomic()`, work of another async context that uses the same database: it waits for this block (deadlock).
+ * PostgreSQL (postgres.js) gives each outermost block its own pooled connection; nothing is serialised.
+ *
  * D1 has no interactive transactions: `atomic()` runs the callback without isolation or rollback
  * (best effort) and still defers `onCommit` callbacks until it returns successfully. Use
  * `connection.batch()` for all-or-nothing groups of statements on D1.
