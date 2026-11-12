@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Managers follow JavaScript shadowing: a property of a more-derived class (for example a getter that returns a
+  manager) hides a parent's manager of the same name, instead of the parent's manager being bound over it.
+
 ## 0.1.0-alpha.2
 
 - `none()` used as a subquery (`filter({ author__in: Author.objects.none() })`) matched every row because the compiler ignored `isNone`; it now matches nothing, also in `update()` / fast `delete()` paths that compile a primary-key subquery.

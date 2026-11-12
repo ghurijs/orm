@@ -583,8 +583,10 @@ function bindManagers(cls: ModelClass, opts: Options): void {
     for (const key of Object.getOwnPropertyNames(c)) {
       if (seen.has(key)) continue
       const d = Object.getOwnPropertyDescriptor(c, key)
-      if (!d || !('value' in d) || !(d.value instanceof Manager)) continue
+      // A property of a more-derived class shadows the same name further up, as in JavaScript: a getter-defined
+      // manager (or a non-manager value) must not be replaced by a parent's manager of that name.
       seen.add(key)
+      if (!d || !('value' in d) || !(d.value instanceof Manager)) continue
       let mgr = d.value as Manager<any>
       if (c !== cls) {
         mgr = Object.assign(Object.create(Object.getPrototypeOf(mgr)), mgr) as Manager<any>

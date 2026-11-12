@@ -15,6 +15,7 @@ import {
   getTable,
   IntegerField,
   type Manager,
+  Manager as ManagerClass,
   ManyToManyField,
   Model,
   RelatedObject,
@@ -161,6 +162,45 @@ describe('Model._meta', () => {
     expect((Article._meta.getField('createdAt') as any).model).toBe(Article)
     expect(Article.DoesNotExist).not.toBe(Note.DoesNotExist)
     expect(new Article.DoesNotExist('x')).toBeInstanceOf(Error)
+  })
+
+  it("abstract models: a subclass's manager getter shadows a parent's manager of the same name", () => {
+    class ParentManager extends ManagerClass {}
+    class ChildManager extends ManagerClass {}
+    class Parent extends Model({ name: new CharField({ maxLength: 10 }) }) {
+      static Meta = { abstract: true }
+      static objects = new ParentManager()
+    }
+    const own = Symbol('child objects')
+    class Middle extends Model({}, { extends: Parent }) {
+      static Meta = { abstract: true }
+    }
+    Object.defineProperty(Middle, 'objects', {
+      get(this: any) {
+        void this._meta
+        if (!Object.hasOwn(this, own)) {
+          const m = new ChildManager()
+          m.contributeToClass(this, 'objects')
+          Object.defineProperty(this, own, { value: m })
+        }
+        return this[own]
+      },
+      configurable: true,
+    })
+    class Leaf extends Model({}, { extends: Middle }) {
+      static Meta = { appLabel: 'shadowapp' }
+    }
+    void Leaf._meta
+    expect(Leaf.objects).toBeInstanceOf(ChildManager)
+    expect(Leaf.objects.model).toBe(Leaf)
+    expect(Object.hasOwn(Leaf, 'objects')).toBe(false)
+    // Without a shadowing property the parent's manager is still inherited.
+    class Plain extends Model({}, { extends: Parent }) {
+      static Meta = { appLabel: 'shadowapp' }
+    }
+    void Plain._meta
+    expect(Plain.objects).toBeInstanceOf(ParentManager)
+    expect(Plain.objects.model).toBe(Plain)
   })
 
   it('apps.populate assigns labels and resolves string relations', async () => {
