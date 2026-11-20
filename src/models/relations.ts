@@ -58,7 +58,7 @@ function createAutoThrough(field: ManyToManyField, target: ModelClass): ModelCla
     }),
   }
   const through = createModelClass(name, fields, { meta, registry: srcMeta.registry })
-  void through._meta
+  through._meta.autoCreatedFrom = src
   return through
 }
 
@@ -66,6 +66,8 @@ function createAutoThrough(field: ManyToManyField, target: ModelClass): ModelCla
 function finalizeRelation(field: RelatedField<any, any>, target: ModelClass): void {
   field.resolvedTarget = target
   if (field.remoteField) return
+  // A swapped model has no table: its relations must not show up as reverse relations of their targets.
+  if (!field.model._meta.registry.isolated && field.model._meta.swapped) return
   const targetMeta = target._meta
   if (targetMeta.abstract) {
     throw new ImproperlyConfigured(
@@ -127,7 +129,7 @@ globalSingleton('ghuri.orm.populateHook', () => {
       if (config.models) registerModels(config.appLabel, config.models)
     }
     for (const m of modelRegistry.all) {
-      if (m._meta.autoCreated && m._meta.hasAppLabel) {
+      if (m._meta.autoCreated && m._meta.hasAppLabel && !m._meta.swapped) {
         try {
           modelRegistry.register(m._meta.appLabel, m)
         } catch {}

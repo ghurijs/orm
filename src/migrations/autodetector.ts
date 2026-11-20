@@ -29,6 +29,7 @@ import {
   type ModelState,
   ProjectState,
 } from './state'
+import { useSwappableReferences } from './swappable'
 
 /** Returned by `askNotNullAlteration` to leave existing NULLs alone (the migration may fail on them). */
 export const IGNORE: unique symbol = Symbol('ghuri.migrations.ignore') as any
@@ -177,6 +178,7 @@ export class MigrationAutodetector {
     const migrations = this.arrange(graph)
     if (opts.trimToApps?.length) this.trimToApps(migrations, new Set(opts.trimToApps))
     this.name(graph, migrations, opts.migrationName)
+    useSwappableReferences(migrations)
     return migrations
   }
 

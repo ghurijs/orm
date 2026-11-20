@@ -47,6 +47,7 @@ export { type InstanceOf, Manager } from './models/manager'
 export { Options } from './models/options'
 export { isModelClass, ModelRegistry, modelRegistry } from './models/registry'
 export { ManyRelatedManager, RelatedManager } from './models/related-managers'
+export { getSwappableLabel, getSwappableModel, readSwappableSetting } from './models/swappable'
 export type { ConstraintSpec, FieldMap, IndexSpec, ModelClass, ModelMeta, ModelState } from './models/types'
 export { LOOKUPS, TRANSFORMS } from './query/compiler'
 export {

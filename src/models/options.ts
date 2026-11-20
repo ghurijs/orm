@@ -5,6 +5,7 @@ import { ManyToManyField, type RelatedObject } from '../fields/related'
 import { capfirst, humanize } from '../utils'
 import type { Manager } from './manager'
 import { type ModelRegistry, modelRegistry } from './registry'
+import { readSwappableSetting } from './swappable'
 import type { ConstraintSpec, IndexSpec, ModelClass, ModelMeta } from './types'
 
 const DEFAULT_PERMISSIONS = ['add', 'change', 'delete', 'view']
@@ -35,6 +36,8 @@ export class Options {
   readonly _relatedObjects: RelatedObject[] = []
   /** Managers in definition order (`[name, manager]`). */
   readonly managers: Array<[string, Manager<any>]> = []
+  /** Auto-created M2M through models: the model whose field created it (it is swapped with it). */
+  autoCreatedFrom?: ModelClass
   private _appLabel?: string
   private _forwardCache?: Map<string, Field<any, any>>
 
@@ -127,6 +130,26 @@ export class Options {
     return (this.meta.defaultPermissions as string[] | undefined) ?? DEFAULT_PERMISSIONS
   }
 
+  /** `Meta.swappable`: the setting that can replace this model (`'AUTH_USER_MODEL'`). */
+  get swappable(): string | undefined {
+    return (this.meta.swappable as string | undefined) || undefined
+  }
+
+  /**
+   * The label of the model that replaces this one (Django's `_meta.swapped`), or undefined when the model is
+   * not swappable, the setting is unset, or the setting names this model. Read from the current settings.
+   * Historical models (isolated registries) are never swapped.
+   */
+  get swapped(): string | undefined {
+    if (this.autoCreatedFrom) return this.autoCreatedFrom._meta.swapped
+    const setting = this.meta.swappable as string | undefined
+    if (!setting || this.registry.isolated) return undefined
+    const value = readSwappableSetting(setting)
+    if (typeof value !== 'string' || !value) return undefined
+    if (!this.hasAppLabel) return value
+    return value.toLowerCase() === this.labelLower ? undefined : value
+  }
+
   get getLatestBy(): string[] | undefined {
     const g = this.meta.getLatestBy
     return g === undefined ? undefined : Array.isArray(g) ? g : [g as string]
@@ -150,14 +173,20 @@ export class Options {
 
   /** Reverse relations (FK, O2O, M2M) pointing to this model; hidden ones excluded. */
   get relatedObjects(): RelatedObject[] {
-    this.registry.resolvePending()
-    return this._relatedObjects.filter((r) => !r.hidden || r.manyToMany)
+    return this.liveRelatedObjects().filter((r) => !r.hidden || r.manyToMany)
   }
 
   /** All reverse relations including hidden ones (auto-created through models). Used by deletion. */
   get allRelatedObjects(): RelatedObject[] {
+    return this.liveRelatedObjects()
+  }
+
+  /** Reverse relations, without those of swapped models (they have no table). */
+  private liveRelatedObjects(): RelatedObject[] {
     this.registry.resolvePending()
-    return this._relatedObjects
+    const rels = this._relatedObjects
+    if (this.registry.isolated || !rels.some((r) => r.relatedModel._meta.swapped)) return rels
+    return rels.filter((r) => !r.relatedModel._meta.swapped)
   }
 
   /** All forward fields including M2M. */
@@ -207,14 +236,12 @@ export class Options {
   findField(name: string): Field<any, any> | RelatedObject | undefined {
     const f = this.getForwardField(name)
     if (f) return f
-    this.registry.resolvePending()
-    return this._relatedObjects.find((r) => !r.field.reverseHidden && r.name === name)
+    return this.liveRelatedObjects().find((r) => !r.field.reverseHidden && r.name === name)
   }
 
   /** Reverse relation by accessor name (`user.posts` → 'posts'). */
   getRelatedObjectByAccessor(accessor: string): RelatedObject | undefined {
-    this.registry.resolvePending()
-    return this._relatedObjects.find((r) => r.getAccessorName() === accessor)
+    return this.liveRelatedObjects().find((r) => r.getAccessorName() === accessor)
   }
 
   /** Django's `_meta.get_field(name)`: forward field or reverse relation. Throws FieldDoesNotExist. */
@@ -226,10 +253,9 @@ export class Options {
 
   /** Names usable in lookups (for error messages). */
   lookupNames(): string[] {
-    this.registry.resolvePending()
     return [
       ...this.forwardFields.map((f) => f.name),
-      ...this._relatedObjects
+      ...this.liveRelatedObjects()
         .filter((r) => !r.field.reverseHidden && !r.relatedModel._meta.autoCreated)
         .map((r) => r.name),
       'pk',

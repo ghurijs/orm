@@ -539,4 +539,7 @@ Post.objects.filter(...).toSQL()                     // { sql, params }
 - `DurationField` is milliseconds (number).
 - Migrations: `RunCode` instead of `RunPython`; the one-off default is stored on the operation
   (`oneOffDefault`) instead of `preserve_default=False`; index names are always explicit in migration files;
-  swappable models (`settings.AUTH_USER_MODEL` dependencies) are written as plain labels.
+  relations to swappable models are written as `to: swappableModel('AUTH_USER_MODEL', 'auth.User')` with
+  `swappableDependency()`, which depends on the migration creating the model rather than always `__first__`.
+- Swappable models: `Meta.swappable` may name a nested setting (`'AGENTS.CONVERSATION_MODEL'`); a swapped model is
+  not returned by `apps.getModel()`. Use `getSwappableModel(setting, default)` to get the active one.

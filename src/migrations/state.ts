@@ -5,6 +5,7 @@ import { createModelClass, isAbstractModel } from '../models/base'
 import { isModelClass, ModelRegistry } from '../models/registry'
 import type { ConstraintSpec, IndexSpec, ModelClass, ModelMeta } from '../models/types'
 import { shortHash } from '../utils'
+import { defineSwappableOption, isSwappableReference, swappableOptionOf } from './swappable'
 
 /** A field in a migration: `{ type: 'CharField', maxLength: 200 }` (flat) or `{ type, options }`. */
 export type FieldSpec = { type: string; options?: Record<string, unknown> } & Record<string, unknown>
@@ -23,6 +24,7 @@ export const MODEL_OPTION_KEYS = [
   'getLatestBy',
   'managed',
   'defaultManagerName',
+  'swappable',
 ] as const
 
 /** Options changed by `AlterModelOptions` (no database effect). */
@@ -41,7 +43,14 @@ export const ALTER_OPTION_KEYS = [
 export function normalizeFieldSpec(spec: FieldSpec | FieldDeconstruction): FieldDeconstruction {
   const { type, options: nested, ...flat } = spec as FieldSpec
   const options: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries({ ...(nested ?? {}), ...flat })) if (v !== undefined) options[k] = v
+  for (const src of [nested ?? {}, flat]) {
+    for (const k of Object.keys(src)) {
+      const ref = swappableOptionOf(src, k) ?? (isSwappableReference(src[k]) ? src[k] : undefined)
+      if (ref) defineSwappableOption(options, k, ref)
+      else if (src[k] !== undefined) options[k] = src[k]
+      else delete options[k]
+    }
+  }
   return { type, options }
 }
 
@@ -81,7 +90,11 @@ export function flattenFieldSpec(spec: FieldDeconstruction): Record<string, unkn
     return a.localeCompare(b)
   })
   const out: Record<string, unknown> = { type: spec.type }
-  for (const k of keys) out[k] = spec.options[k]
+  for (const k of keys) {
+    const ref = swappableOptionOf(spec.options, k)
+    if (ref) defineSwappableOption(out, k, ref)
+    else out[k] = spec.options[k]
+  }
   return out
 }
 

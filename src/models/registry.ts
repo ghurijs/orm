@@ -43,6 +43,11 @@ export class ModelRegistry {
 
   /** Register a concrete model under an app label. */
   register(appLabel: string, model: ModelClass): void {
+    if (!this.isolated && model._meta.swapped) {
+      // Swapped out (`Meta.swappable`): not installed, like Django's `apps.get_models()` without swapped ones.
+      this.unregister(model)
+      return
+    }
     let bucket = this.byLabel.get(appLabel)
     if (!bucket) {
       bucket = new Map()

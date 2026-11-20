@@ -42,6 +42,13 @@ export class Manager<T = any> {
         `Manager '${this.constructor.name}' isn't bound to a model yet: register the model (INSTALLED_APPS / registerModels) or access Model._meta first.`,
       )
     }
+    const swapped = this.model._meta.swapped
+    if (swapped) {
+      const own = this.model._meta.hasAppLabel ? this.model._meta.label : this.model._meta.objectName
+      throw new ImproperlyConfigured(
+        `Manager isn't available; '${own}' has been swapped for '${swapped}' (${this.model._meta.swappable}).`,
+      )
+    }
   }
 
   /** Base QuerySet of this manager; override for custom managers. */

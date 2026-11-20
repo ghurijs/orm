@@ -122,6 +122,15 @@ export {
   StateApps,
 } from './migrations/state'
 export {
+  isSwappableReference,
+  type SwappableInfo,
+  SwappableReference,
+  swappableDependency,
+  swappableDependencyInfo,
+  swappableModel,
+  withoutSwappedModels,
+} from './migrations/swappable'
+export {
   MigrationWriter,
   type MigrationWriterOptions,
   migrationExportName,

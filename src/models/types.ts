@@ -42,6 +42,12 @@ export interface ModelMeta {
   managed?: boolean
   /** Name of the default manager attribute (default: first manager, normally `objects`). */
   defaultManagerName?: string
+  /**
+   * Name of the setting that can replace this model (Django's `swappable`), e.g. `'AUTH_USER_MODEL'`; a dotted
+   * path reads a nested setting (`'AGENTS.CONVERSATION_MODEL'`). When the setting names another model, this one
+   * is "swapped": it is not registered, gets no table, and its managers throw.
+   */
+  swappable?: string
   /** Internal: set for auto-created M2M through models. */
   autoCreated?: boolean
   [key: string]: unknown

@@ -1,6 +1,7 @@
 import { type AppConfig, apps } from '@ghuri/core'
 import type { Connection } from '../db/types'
 import { isModelClass } from '../models/registry'
+import { getSwappableLabel } from '../models/swappable'
 import type { ModelClass } from '../models/types'
 import { globalSingleton, isPlainObject } from '../utils'
 import { InconsistentMigrationHistory, InvalidMigrationPlan, NodeNotFoundError } from './errors'
@@ -8,6 +9,7 @@ import { keyOf, MigrationGraph } from './graph'
 import { isMigration, type Migration, type MigrationKey } from './migration'
 import { type AppliedMigration, MigrationRecorder } from './recorder'
 import { ProjectState } from './state'
+import { swappableDependencyInfo, withoutSwappedModels } from './swappable'
 
 /** Loads an app's migrations from somewhere else than `AppConfig.migrations` (the Node disk loader). */
 export type MigrationSourceLoader = (config: AppConfig) => Promise<Map<string, Migration> | null>
@@ -76,6 +78,11 @@ export class MigrationLoader {
   readonly unmigratedApps = new Set<string>()
   /** Applied migrations keyed by `app.name` (empty without a connection). */
   applied = new Map<string, AppliedMigration>()
+  /**
+   * Edges added by `swappableDependency()` (`'child<parent'`). They order a fresh database; an applied migration
+   * whose swappable parent is not applied (a model swapped in after it ran) is not an inconsistent history.
+   */
+  private readonly swappableEdges = new Set<string>()
   /** Squashed migrations in use → keys they replace. */
   readonly replacements = new Map<string, MigrationKey[]>()
   readonly appConfigs: AppConfig[]
@@ -96,6 +103,7 @@ export class MigrationLoader {
     this.migratedApps.clear()
     this.unmigratedApps.clear()
     this.replacements.clear()
+    this.swappableEdges.clear()
     for (const k of [...this.graph.keys.values()]) this.graph.removeNode(k)
     await this.loadMigrations()
     if (this.opts.connection)
@@ -116,6 +124,7 @@ export class MigrationLoader {
         continue
       }
       this.migratedApps.add(label)
+      found = withoutSwappedModels(label, found)
       for (const [name, m] of found) {
         m.appLabel = label
         m.name = name
@@ -126,6 +135,15 @@ export class MigrationLoader {
 
   private resolveDependency(origin: Migration, dep: readonly [string, string]): MigrationKey | null {
     const [app, name] = dep
+    // `swappableDependency()` naming the migration's own app (the default model is in it): nothing to wait for.
+    if (app === origin.appLabel && name === '__first__') return null
+    const swappable = swappableDependencyInfo(dep)
+    if (swappable) {
+      // Django resolves it to the app's first migration; the migration creating the model is safer when the
+      // project adds the model later (e.g. swapping mid-project).
+      const created = this.creatingMigration(getSwappableLabel(swappable.setting, swappable.defaultLabel))
+      if (created) return created
+    }
     if (name === '__first__' || name === '__latest__') {
       if (this.unmigratedApps.has(app) || !this.migratedApps.has(app)) {
         if (this.unmigratedApps.has(app)) return null
@@ -148,15 +166,57 @@ export class MigrationLoader {
     return [app, name]
   }
 
+  /** Does `node` depend (directly or not) on `ancestor` in the graph built so far? */
+  private dependsOn(node: MigrationKey, ancestor: MigrationKey): boolean {
+    const target = keyOf(ancestor)
+    const seen = new Set<string>()
+    const stack = [keyOf(node)]
+    while (stack.length) {
+      const k = stack.pop()!
+      if (k === target) return true
+      if (seen.has(k)) continue
+      seen.add(k)
+      stack.push(...(this.graph.parents.get(k) ?? []))
+    }
+    return false
+  }
+
+  /** The migration that creates the model `'app.Model'` (`CreateModel`), if any. */
+  private creatingMigration(label: string): MigrationKey | null {
+    const [app, model] = label.toLowerCase().split('.')
+    for (const m of this.migrations.values()) {
+      if (m.appLabel !== app) continue
+      for (const op of m.operations) {
+        const name = (op as unknown as { name?: unknown }).name
+        if (op.type === 'CreateModel' && typeof name === 'string' && name.toLowerCase() === model)
+          return m.key
+      }
+    }
+    return null
+  }
+
   private buildGraph(): void {
     for (const m of this.migrations.values()) this.graph.addNode(m.key, m)
     for (const m of this.migrations.values()) {
       for (const dep of m.dependencies) {
+        if (swappableDependencyInfo(dep)) continue
         const parent = this.resolveDependency(m, dep)
         if (parent) this.graph.addDependency(String(m), m.key, parent)
       }
       for (const rb of m.runBefore) {
         if (this.migrations.has(`${rb[0]}.${rb[1]}`)) this.graph.addDependency(String(m), rb, m.key)
+      }
+    }
+    // Swappable dependencies last: the migration creating the swapped-in model, unless that one (indirectly)
+    // depends on this migration (a project migration adopting the app's table); then the app's first migration.
+    for (const m of this.migrations.values()) {
+      for (const dep of m.dependencies) {
+        if (!swappableDependencyInfo(dep)) continue
+        let parent = this.resolveDependency(m, dep)
+        if (parent && this.dependsOn(parent, m.key)) parent = this.resolveDependency(m, [dep[0], '__first__'])
+        if (!parent) continue
+        this.graph.addDependency(String(m), m.key, parent)
+        this.swappableEdges.add(`${keyOf(m.key)}<${keyOf(parent)}`)
       }
     }
     if (this.opts.replaceMigrations !== false) {
@@ -203,7 +263,7 @@ export class MigrationLoader {
       if (!this.graph.nodes.has(k)) continue
       const key = this.graph.keys.get(k)!
       for (const p of this.graph.parents.get(k) ?? []) {
-        if (!this.applied.has(p)) {
+        if (!this.applied.has(p) && !this.swappableEdges.has(`${k}<${p}`)) {
           throw new InconsistentMigrationHistory(
             `Migration ${keyOf(key)} is applied before its dependency ${p} on the database.`,
           )

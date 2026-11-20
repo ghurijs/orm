@@ -136,7 +136,7 @@ function collectModels(opts: SetupTestDatabaseOptions): ModelClass[] {
   const all = new Set<ModelClass>()
   for (const m of apps.getModels()) if (isModelClass(m)) all.add(m)
   for (const m of modelRegistry.all)
-    if (m._meta.hasAppLabel && !m._meta.autoCreated && !m._meta.abstract) all.add(m)
+    if (m._meta.hasAppLabel && !m._meta.autoCreated && !m._meta.abstract && !m._meta.swapped) all.add(m)
   return [...all]
 }
 

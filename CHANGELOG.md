@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Swappable models (Django's `Meta.swappable`): `static Meta = { swappable: 'SETTING' }` (a dotted name reads a
+  nested setting, `'AGENTS.CONVERSATION_MODEL'`). When the setting names another model, `_meta.swapped` returns
+  that label and the model is not installed: it is left out of `apps.getModels()`, the autodetector and test
+  databases, its relations are not reverse relations of their targets, and its managers throw `Manager isn't
+  available; '<label>' has been swapped for '<other>'`. Nothing changes while the setting is unset or names the
+  model itself. New: `getSwappableModel(setting, default?)`, `getSwappableLabel()`, `readSwappableSetting()`.
+- Swappable markers for migrations (Django's `to=settings.X` / `swappable_dependency()`), from
+  `@ghuri/orm/migrations`: `swappableModel(setting, default?)` as a field's `to`, read as the label the setting
+  names when the migration runs, and `swappableDependency(setting, default?)`, which depends on the migration
+  creating that model (else the app's first; ignored for the migration's own app; `__first__` when the creating
+  migration depends on this one; never an inconsistent history for an applied migration). The loader skips a
+  swapped model's operations (`CreateModel` with `options.swappable` and later operations on it).
+  `makemigrations` writes `swappableModel()` / `swappableDependency()` for relations to a model named by a
+  swappable setting (for example `auth.User`) and records `swappable` in `CreateModel` options; existing migration
+  files are unchanged and still load. Also exported: `SwappableReference`, `isSwappableReference()`,
+  `swappableDependencyInfo()`, `withoutSwappedModels()`.
+
 ## 0.1.0-alpha.4
 
 - fix: concurrent `atomic()` blocks on one SQLite (better-sqlite3) or PGlite connection no longer fail with
