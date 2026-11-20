@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.5
 
 - Swappable models (Django's `Meta.swappable`): `static Meta = { swappable: 'SETTING' }` (a dotted name reads a
   nested setting, `'AGENTS.CONVERSATION_MODEL'`). When the setting names another model, `_meta.swapped` returns
