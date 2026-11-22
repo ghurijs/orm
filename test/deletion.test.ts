@@ -11,10 +11,58 @@ import {
   type SaveSignalArgs,
 } from '../src/index'
 import { backends, blogFixture, useTestDatabase } from './helpers'
-import { Author, Category, Comment, fallbackOwnerId, Owner, Pet, Post, Tag, Visit } from './models'
+import {
+  Author,
+  Category,
+  Comment,
+  Desk,
+  Entry,
+  EntryLine,
+  fallbackOwnerId,
+  Memo,
+  Owner,
+  Party,
+  Pet,
+  Post,
+  Tag,
+  Visit,
+  Workspace,
+} from './models'
 
 describe.each(backends)('deletion & signals (%s)', (backend) => {
-  useTestDatabase(backend)
+  const holder = useTestDatabase(backend)
+
+  /** SQL statements the connection runs while `fn` runs. */
+  async function captureSql(fn: () => Promise<unknown>): Promise<string[]> {
+    const conn = holder.db.connection
+    const original = conn.execute
+    const seen: string[] = []
+    conn.execute = ((sql: string, params?: unknown[]) => {
+      seen.push(sql)
+      return original.call(conn, sql, params)
+    }) as typeof conn.execute
+    try {
+      await fn()
+    } finally {
+      conn.execute = original
+    }
+    return seen
+  }
+
+  async function tenantFixture() {
+    const ws = await Workspace.objects.create({ name: 'acme' })
+    const other = await Workspace.objects.create({ name: 'other' })
+    const seller = await Party.objects.create({ workspace: ws, name: 'seller' })
+    const agent = await Party.objects.create({ workspace: ws, name: 'agent' })
+    const e1 = await Entry.objects.create({ workspace: ws, party: seller, viaParty: agent, label: 'e1' })
+    const e2 = await Entry.objects.create({ workspace: ws, party: agent, label: 'e2' })
+    await Entry.objects.create({ workspace: ws, label: 'e3' })
+    await EntryLine.objects.create({ entry: e1, amount: 10 })
+    await EntryLine.objects.create({ entry: e2, amount: 20 })
+    // a row outside the tenant that points into it keeps living, with its link nulled
+    const outsider = await Entry.objects.create({ workspace: other, party: seller, label: 'outsider' })
+    return { ws, other, seller, agent, outsider }
+  }
 
   it('CASCADE through FK, M2M through rows and self-references', async () => {
     const { ann, tech, tagTs } = await blogFixture()
@@ -36,6 +84,67 @@ describe.each(backends)('deletion & signals (%s)', (backend) => {
     const { life, p3 } = await blogFixture()
     await life.delete()
     expect((await Post.objects.get({ pk: p3.pk })).categoryId).toBeNull()
+  })
+
+  it('CASCADE deletes rows that SET_NULL-reference other cascaded rows before those rows', async () => {
+    const { ws, other, outsider } = await tenantFixture()
+    let result: [number, Record<string, number>] = [0, {}]
+    const sql = await captureSql(async () => {
+      result = await ws.delete()
+    })
+    const [count, per] = result
+    expect(per).toEqual({
+      'tests.Workspace': 1,
+      'tests.Party': 2,
+      'tests.Entry': 3,
+      'tests.EntryLine': 2,
+    })
+    expect(count).toBe(8)
+    expect(await Party.objects.count()).toBe(0)
+    expect((await Entry.objects.all()).map((e) => e.label)).toEqual(['outsider'])
+    expect((await Entry.objects.get({ pk: outsider.pk })).partyId).toBeNull()
+    expect(await Workspace.objects.filter({ pk: other.pk }).exists()).toBe(true)
+    // entries deleted with the tenant go before the parties, so only the outsider is nulled
+    const entryTable = Entry._meta.dbTable
+    const updates = sql.filter((s) => s.startsWith('UPDATE'))
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toContain(`"${entryTable}"`)
+    const deletes = sql.filter((s) => s.startsWith('DELETE'))
+    const entryAt = deletes.findIndex((s) => s.includes(`"${entryTable}"`))
+    const partyAt = deletes.findIndex((s) => s.includes(`"${Party._meta.dbTable}"`))
+    expect(entryAt).toBeGreaterThanOrEqual(0)
+    expect(entryAt).toBeLessThan(partyAt)
+  })
+
+  it('queryset delete() of a tenant with SET_NULL links between its rows', async () => {
+    await tenantFixture()
+    const [count, per] = await Workspace.objects.filter({ name: 'acme' }).delete()
+    expect(count).toBe(8)
+    expect(per['tests.Party']).toBe(2)
+    expect(await Entry.objects.count()).toBe(1)
+    expect(await EntryLine.objects.count()).toBe(0)
+  })
+
+  it('SET_NULL links that point both ways are nulled before the delete', async () => {
+    const ws = await Workspace.objects.create({ name: 'acme' })
+    const desk = await Desk.objects.create({ workspace: ws })
+    const memo = await Memo.objects.create({ workspace: ws, desk })
+    desk.lastMemo = memo
+    await desk.save()
+    const [count, per] = await ws.delete()
+    expect(per).toEqual({ 'tests.Workspace': 1, 'tests.Desk': 1, 'tests.Memo': 1 })
+    expect(count).toBe(3)
+    expect(await Desk.objects.count()).toBe(0)
+    expect(await Memo.objects.count()).toBe(0)
+  })
+
+  it('deleting a party alone nulls the entries that point at it', async () => {
+    const { seller, agent } = await tenantFixture()
+    await seller.delete()
+    await agent.delete()
+    expect(await Entry.objects.filter({ party__isnull: false }).count()).toBe(0)
+    expect(await Entry.objects.filter({ viaParty__isnull: false }).count()).toBe(0)
+    expect(await Entry.objects.count()).toBe(4)
   })
 
   it('PROTECT raises ProtectedError and deletes nothing', async () => {

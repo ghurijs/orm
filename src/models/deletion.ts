@@ -22,20 +22,38 @@ interface FieldUpdate {
   field: Field<any, any>
   value: unknown
   objs: BaseModel[]
+  /** The model whose deletion triggered the update (the FK's target). */
+  target: ModelClass
 }
 
 /**
  * Django-style deletion collector: walks reverse relations and emulates `onDelete` in the ORM so
  * behavior is identical on D1, SQLite and PostgreSQL.
  */
+function addEdge(map: Map<ModelClass, Set<ModelClass>>, parent: ModelClass, child: ModelClass): void {
+  if (parent === child) return
+  let set = map.get(parent)
+  if (!set) {
+    set = new Set()
+    map.set(parent, set)
+  }
+  set.add(child)
+}
+
 export class Collector {
   /** model → (pk → instance), in collection order. */
   readonly data = new Map<ModelClass, Map<unknown, BaseModel>>()
   readonly fastDeletes: QuerySet<any>[] = []
   readonly fieldUpdates: FieldUpdate[] = []
   readonly restricted: Array<{ objs: BaseModel[]; label: string }> = []
-  /** parent → children that must be deleted first. */
+  /** parent → children that must be deleted first (CASCADE). */
   private readonly children = new Map<ModelClass, Set<ModelClass>>()
+  /**
+   * parent → models that point at it through SET_NULL / SET_DEFAULT / SET(). When rows of both are
+   * deleted, the referencing rows should go first too; this edge only orders, it is dropped if it
+   * would contradict a CASCADE edge.
+   */
+  private readonly softChildren = new Map<ModelClass, Set<ModelClass>>()
 
   constructor(
     readonly using: string,
@@ -129,29 +147,50 @@ export class Collector {
         value = typeof onDelete.value === 'function' ? (onDelete.value as () => unknown)() : onDelete.value
         if (value && typeof value === 'object' && 'pk' in (value as object)) value = (value as BaseModel).pk
       }
-      this.fieldUpdates.push({ model: relatedModel, field: fk, value, objs: related })
+      addEdge(this.softChildren, model, relatedModel)
+      this.fieldUpdates.push({ model: relatedModel, field: fk, value, objs: related, target: model })
     }
   }
 
   private addChild(parent: ModelClass, child: ModelClass): void {
-    if (parent === child) return
-    let set = this.children.get(parent)
-    if (!set) {
-      set = new Set()
-      this.children.set(parent, set)
-    }
-    set.add(child)
+    addEdge(this.children, parent, child)
   }
 
-  /** Models ordered so that referencing (child) models are deleted before their parents. */
+  /**
+   * Models ordered so that referencing (child) models are deleted before their parents: CASCADE
+   * edges first, then every SET_NULL / SET_DEFAULT / SET() edge that doesn't close a cycle. D1 runs
+   * each statement in its own transaction, so a deferred FK is checked right after the DELETE; the
+   * order (or, where no order exists, the field update) is what keeps it satisfied.
+   */
   private deletionOrder(): ModelClass[] {
+    const edges = new Map<ModelClass, Set<ModelClass>>()
+    for (const [parent, set] of this.children) for (const c of set) addEdge(edges, parent, c)
+    const reaches = (from: ModelClass, to: ModelClass): boolean => {
+      const seen = new Set<ModelClass>()
+      const stack = [from]
+      while (stack.length) {
+        const m = stack.pop()!
+        if (m === to) return true
+        if (seen.has(m)) continue
+        seen.add(m)
+        for (const c of edges.get(m) ?? []) stack.push(c)
+      }
+      return false
+    }
+    for (const [parent, set] of this.softChildren) {
+      if (!this.data.has(parent)) continue
+      for (const c of set) {
+        if (!this.data.has(c) || edges.get(parent)?.has(c)) continue
+        if (!reaches(c, parent)) addEdge(edges, parent, c)
+      }
+    }
     const out: ModelClass[] = []
     const visiting = new Set<ModelClass>()
     const done = new Set<ModelClass>()
     const visit = (m: ModelClass) => {
       if (done.has(m) || visiting.has(m)) return
       visiting.add(m)
-      for (const c of this.children.get(m) ?? []) visit(c)
+      for (const c of edges.get(m) ?? []) visit(c)
       visiting.delete(m)
       done.add(m)
       out.push(m)
@@ -179,6 +218,15 @@ export class Collector {
         const conn = await connections.get(this.using)
         const d = conn.dialect
         const maxParams = Math.max(1, conn.features.maxQueryParams - 5)
+        const order = this.deletionOrder()
+        const position = new Map(order.map((m, i) => [m, i]))
+        // A row that is itself being deleted needs no field update when its model is deleted before
+        // the target's. Otherwise (same model, or a cycle) it is updated first, as Django does, so
+        // the target's DELETE never leaves a dangling reference.
+        const deletedFirst = (upd: FieldUpdate, o: BaseModel) =>
+          upd.model !== upd.target &&
+          this.isCollected(o) &&
+          position.get(upd.model)! < (position.get(upd.target) ?? Number.POSITIVE_INFINITY)
         for (const [model, bucket] of this.data) {
           for (const obj of bucket.values())
             await preDelete.send(model, { instance: obj, using: this.using, origin: this.origin })
@@ -193,7 +241,7 @@ export class Collector {
           bump(qs.model, (await conn.execute(sql, params)).rowsAffected ?? 0)
         }
         for (const upd of this.fieldUpdates) {
-          const objs = upd.objs.filter((o) => !this.isCollected(o))
+          const objs = upd.objs.filter((o) => !deletedFirst(upd, o))
           if (!objs.length) continue
           const meta = upd.model._meta
           for (const batch of chunk(objs, maxParams - 1)) {
@@ -220,7 +268,7 @@ export class Collector {
             }
           }
         }
-        for (const model of this.deletionOrder()) {
+        for (const model of order) {
           const meta = model._meta
           // Later-collected rows (self-referencing children) go first.
           const instances = [...this.data.get(model)!.values()].reverse()

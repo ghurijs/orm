@@ -218,4 +218,76 @@ export class Visit extends Model({
   static Meta = { appLabel: 'tests' }
 }
 
-export const allModels = [Author, Profile, Category, Tag, Post, Comment, Sample, Owner, Pet, Visit]
+// ---- deletion order (tenant cascade with SET_NULL links) ------------------------------------------
+
+/** A tenant: everything below cascades from it. */
+export class Workspace extends Model({
+  name: new CharField({ maxLength: 50 }),
+}) {
+  declare static objects: Manager<Workspace>
+  static Meta = { appLabel: 'tests' }
+}
+
+export class Party extends Model({
+  workspace: new ForeignKey(() => Workspace, { onDelete: CASCADE, relatedName: 'parties' }),
+  name: new CharField({ maxLength: 50 }),
+}) {
+  declare static objects: Manager<Party>
+  static Meta = { appLabel: 'tests' }
+}
+
+/** Points at Party twice through SET_NULL; both rows are also deleted by the workspace cascade. */
+export class Entry extends Model({
+  workspace: new ForeignKey(() => Workspace, { onDelete: CASCADE, relatedName: 'entries' }),
+  party: new ForeignKey(() => Party, { onDelete: SET_NULL, null: true, relatedName: 'entries' }),
+  viaParty: new ForeignKey(() => Party, { onDelete: SET_NULL, null: true, relatedName: 'viaEntries' }),
+  label: new CharField({ maxLength: 50 }),
+}) {
+  declare static objects: Manager<Entry>
+  static Meta = { appLabel: 'tests' }
+}
+
+/** Gives Entry a CASCADE child, so Entry rows are collected one by one instead of fast-deleted. */
+export class EntryLine extends Model({
+  entry: new ForeignKey(() => Entry, { onDelete: CASCADE, relatedName: 'lines' }),
+  amount: new IntegerField({ default: 0 }),
+}) {
+  declare static objects: Manager<EntryLine>
+  static Meta = { appLabel: 'tests' }
+}
+
+/** Desk and Memo point at each other through SET_NULL: no order can satisfy both links. */
+export class Desk extends Model({
+  workspace: new ForeignKey(() => Workspace, { onDelete: CASCADE, relatedName: 'desks' }),
+  lastMemo: new ForeignKey('tests.Memo', { onDelete: SET_NULL, null: true, relatedName: 'lastMemoDesks' }),
+}) {
+  declare static objects: Manager<Desk>
+  static Meta = { appLabel: 'tests' }
+}
+
+export class Memo extends Model({
+  workspace: new ForeignKey(() => Workspace, { onDelete: CASCADE, relatedName: 'memos' }),
+  desk: new ForeignKey(() => Desk, { onDelete: SET_NULL, null: true, relatedName: 'memos' }),
+}) {
+  declare static objects: Manager<Memo>
+  static Meta = { appLabel: 'tests' }
+}
+
+export const allModels = [
+  Author,
+  Profile,
+  Category,
+  Tag,
+  Post,
+  Comment,
+  Sample,
+  Owner,
+  Pet,
+  Visit,
+  Workspace,
+  Party,
+  Entry,
+  EntryLine,
+  Desk,
+  Memo,
+]
