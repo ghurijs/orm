@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.6
 
 - fix: a cascading delete no longer fails on D1 when rows it deletes point at each other through `SET_NULL`,
   `SET_DEFAULT` or `SET()` (for example deleting a tenant whose entries point at its parties). D1 commits every

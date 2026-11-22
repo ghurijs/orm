@@ -26,10 +26,7 @@ interface FieldUpdate {
   target: ModelClass
 }
 
-/**
- * Django-style deletion collector: walks reverse relations and emulates `onDelete` in the ORM so
- * behavior is identical on D1, SQLite and PostgreSQL.
- */
+/** Record that `child` rows must be deleted before `parent` rows (self-edges are ignored). */
 function addEdge(map: Map<ModelClass, Set<ModelClass>>, parent: ModelClass, child: ModelClass): void {
   if (parent === child) return
   let set = map.get(parent)
@@ -40,6 +37,10 @@ function addEdge(map: Map<ModelClass, Set<ModelClass>>, parent: ModelClass, chil
   set.add(child)
 }
 
+/**
+ * Django-style deletion collector: walks reverse relations and emulates `onDelete` in the ORM so
+ * behavior is identical on D1, SQLite and PostgreSQL.
+ */
 export class Collector {
   /** model → (pk → instance), in collection order. */
   readonly data = new Map<ModelClass, Map<unknown, BaseModel>>()

@@ -1,6 +1,6 @@
 {
   "name": "@ghuri/orm",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Ghuri ORM: Django-style models, QuerySets and migrations on Drizzle (D1, Postgres, SQLite)",
   "type": "module",
   "license": "MIT",
