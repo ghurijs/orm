@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- fix: a cascading delete no longer fails on D1 when rows it deletes point at each other through `SET_NULL`,
+  `SET_DEFAULT` or `SET()` (for example deleting a tenant whose entries point at its parties). D1 commits every
+  statement on its own, so a deferred foreign key is checked right after each `DELETE`, and the collector could
+  delete the parties before the entries. Those links now count when ordering the deletes (unless they would
+  contradict a `CASCADE` link or form a loop); a row being deleted is nulled first, as Django does, whenever its
+  table isn't deleted before the row it points at.
+
 ## 0.1.0-alpha.5
 
 - Swappable models (Django's `Meta.swappable`): `static Meta = { swappable: 'SETTING' }` (a dotted name reads a
